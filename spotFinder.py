@@ -1,5 +1,6 @@
-ERR_MARGIN = 100
+ERR_MARGIN = 100 #How far off a "correct" prediction can be
 batch_size = 10
+EPOCHS =20
 
 #import statements
 import torch
@@ -16,22 +17,18 @@ import _warnings
 from matplotlib import pylab as plt
 from math import floor
 
-torchvision.disable_beta_transforms_warning()
-torchvision.disable_beta_transforms_warning()
-torchvision.disable_beta_transforms_warning()
-
 #use the gpu
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Device is: {device}')
 usingCuda = True
 
+#Used to calculate the dimensions of an image after it passed through a pool or convolution layer
 def calcLengOfConv(length , kern_size, stride_size = -1):
     if stride_size == -1:
         stride_size = kern_size
     return floor((length - kern_size)/stride_size + 1)
 
 #Make the data loaders
-transforms = transforms.Compose([])
 rootForTrain = "/mnt/tmpdata/data/isashu/loaderTrainingFiles"
 rootForTest = "/mnt/tmpdata/data/isashu/loaderTestFiles"
 iiFile = "imageNameAndImageDS.hdf5"
@@ -51,29 +48,20 @@ testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
 class Net(nn.Module):
     def __init__(self):
         super().__init__()
-        POOL_STRIDE = 2
-        #self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=3, kernel_size=(5, 5), stride=1) #1 input chanels, 5 convolution layers, 5 x 5 convolution
-        #self.pool2 = nn.MaxPool2d(1, 1)
-        #self.conv2 = nn.Conv2d(1, 16, 5)
-        #self.avg = nn.AvgPool2d((501, 488))
+        #Images have already gone through a 5*5 MaxPool2d.
+        #self.pool = nn.MaxPool2d(kernel_size=2, stride=2) #So far this layer has only made performance dramatically worse
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=3, kernel_size=(5, 5), stride=1) #1 input chanels, 3 feature maps, 5 x 5 convolution
+   
         width_of_x = calcLengOfConv(length=505, kern_size=5, stride_size=1)
         width_of_y = calcLengOfConv(length=492, kern_size=5, stride_size=1)
-
         self.fc1 = nn.Linear(3*int(width_of_x*width_of_y), 1)
-        #self.fc2 = nn.Linear(120, 84)
 
     def forward(self, x):
         #x.shape = 505 * 492
         #x = self.pool(x)
         x = F.relu(self.conv1(x))
-        #x = F.relu(self.conv2(x))
-        #x = self.pool2(x)
         x = torch.flatten(x, 1) # flatten all dimensions except batch
-        #len(x) = 180048
-        x = F.relu(self.fc1(x))
-        #x = F.relu(self.fc2(x))
-        #x = self.fc3(x)
+        x = F.relu(self.fc1(x)
         return x
 
 #Make the network and have it utilize the gpu
@@ -93,7 +81,7 @@ optimizer = optim.SGD(net.parameters(), lr=0.00000000001, momentum=0.3) #lr=0.00
 costs = [] #These lists are necessary for keeping track of the models progress
 accuracies = []
 con_accs = []
-for epoch in range(20):  # loop over the dataset multiple times
+for epoch in range(EPOCHS):  # loop over the dataset multiple times
     running_loss = 0.0
     for i, data in enumerate(trainloader, 0):
         t = time.time()
