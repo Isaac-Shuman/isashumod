@@ -1,4 +1,4 @@
-ERR_MARGIN = 100 #How far off a "correct" prediction can be
+ERR_MARGIN = 10 #How far off a "correct" prediction can be as a percentage
 batch_size = 10
 EPOCHS =20
 useMultipleGPUs = False
@@ -153,12 +153,12 @@ for epoch in range(EPOCHS):  # loop over the dataset multiple times
             outputs = net(inputs)
             print('arrived at predictions')
             total += labels.size(0)
-            correct += (abs(outputs - labels) < ERR_MARGIN).sum().item()
+            correct += (abs(outputs - labels)/labels < ERR_MARGIN).sum().item()
 
             #Check how guessing the mean value of spots compares. Mean is 402.8 spots
             control = torch.zeros_like(outputs)
             control.add_(403.)
-            cont_cor += (abs(control - labels) < ERR_MARGIN).sum().item()
+            cont_cor += (abs(control - labels)/labels < ERR_MARGIN).sum().item()
 
     accuracies.append(100 * correct // total)
     con_accs.append(100 * cont_cor//total)
@@ -181,7 +181,7 @@ with torch.no_grad():
         #_, predicted = torch.max(outputs.data, 1)
         print('arrived at predictions')
         total += labels.size(0)
-        correct += (abs(outputs - labels) < ERR_MARGIN).sum().item()
+        correct += (abs(outputs - labels)/labels < ERR_MARGIN).sum().item()
 print(f'Accuracy of the network on the test images: {100 * correct // total} %')
 
 #show the costs over time
