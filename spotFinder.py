@@ -1,4 +1,4 @@
-ERR_MARGIN = 10 #How far off a "correct" prediction can be as a percentage
+ERR_MARGIN = 0.1 #How far off a "correct" prediction can be as a percentage
 batch_size = 10
 EPOCHS =20
 useMultipleGPUs = False
