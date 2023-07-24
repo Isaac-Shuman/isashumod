@@ -153,7 +153,6 @@ for epoch in range(EPOCHS):  # loop over the dataset multiple times
             outputs = net(inputs)
             print('arrived at predictions')
             total += labels.size(0)
-            embed()
             correct += (abs(outputs - labels)/labels < ERR_MARGIN).sum().item()
 
             #Check how guessing the mean value of spots compares. Mean is 402.8 spots
