@@ -1,6 +1,7 @@
 ERR_MARGIN = 100 #How far off a "correct" prediction can be
 batch_size = 10
 EPOCHS =20
+useMultipleGPUs = False
 
 #import statements
 import torch
@@ -49,25 +50,36 @@ class Net(nn.Module):
     def __init__(self):
         super().__init__()
         #Images have already gone through a 5*5 MaxPool2d.
-        #self.pool = nn.MaxPool2d(kernel_size=2, stride=2) #So far this layer has only made performance dramatically worse
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=3, kernel_size=(5, 5), stride=1) #1 input chanels, 3 feature maps, 5 x 5 convolution
-   
-        width_of_x = calcLengOfConv(length=505, kern_size=5, stride_size=1)
-        width_of_y = calcLengOfConv(length=492, kern_size=5, stride_size=1)
-        self.fc1 = nn.Linear(3*int(width_of_x*width_of_y), 1)
+        mpk = 1
+        fema = 3
+        self.pool = nn.MaxPool2d(kernel_size=mpk, stride=mpk)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=fema, kernel_size=(5, 5), stride=1) #1 input chanels, 3 convolution layers, 5 x 5 convolution
+        #self.pool2 = nn.MaxPool2d(1, 1)
+        #self.conv2 = nn.Conv2d(1, 16, 5)
+        #self.avg = nn.AvgPool2d((501, 488))
+        width_of_x = calcLengOfConv(length=(calcLengOfConv(length=505, kern_size=mpk, stride_size=mpk)), kern_size=5, stride_size=1)
+        width_of_y = calcLengOfConv(length=(calcLengOfConv(length=492, kern_size=mpk, stride_size=mpk)), kern_size=5, stride_size=1)
+
+        self.fc1 = nn.Linear(fema*int(width_of_x*width_of_y), 1)
+        #self.fc2 = nn.Linear(120, 84)
 
     def forward(self, x):
         #x.shape = 505 * 492
         #x = self.pool(x)
         x = F.relu(self.conv1(x))
+        #x = F.relu(self.conv2(x))
+        #x = self.pool2(x)
         x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = F.relu(self.fc1(x)
+        #len(x) = 180048
+        x = F.relu(self.fc1(x))
+        #x = F.relu(self.fc2(x))
+        #x = self.fc3(x)
         return x
 
 #Make the network and have it utilize the gpu
 net = Net()
 
-if (torch.cuda.device_count()> 1) and False:
+if (torch.cuda.device_count()> 1) and useMultipleGPUs:
     print(f"Let's use {torch.cuda.device_count()} GPUs!")
     net = nn.DataParallel(net)
 if usingCuda:
@@ -184,5 +196,3 @@ ax2.plot(a, b)
 ax2.plot(a, con_accs)
 
 plt.show()
-
-embed()
