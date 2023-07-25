@@ -1,7 +1,8 @@
-ERR_MARGIN = 0.1 #How far off a "correct" prediction can be as a percentage
+ERR_MARGIN = 0.1 #How far off a "correct" prediction can be as a percentage (0.1 is 10%)
 batch_size = 10
 EPOCHS =20
 useMultipleGPUs = False
+usingCuda = True
 
 #import statements
 import torch
@@ -17,11 +18,29 @@ import torch.optim as optim
 import _warnings
 from matplotlib import pylab as plt
 from math import floor
+import logging
+
+#Setup for the run info files
+def setupInfoFiles():
+    rootFolderName = '/mnt/tmpdata/data/isashu/runFolders'
+    folderName = os.path.join(rootFolderName,str(time.strftime('run_%Y-%m-%d_%H:%M:%S')))
+    logName = 'metrics.log'
+
+    os.mkdir(folderName)
+    log_filename = os.path.join(folderName, logName)
+    logging.basicConfig(filename=log_filename, encoding='utf-8', level=logging.INFO, filemode='a')
+
+    pathToModel = os.path.join(folderName, 'model.pth')
+
+    return pathToModel
+
+
+pathToModel = setupInfoFiles()
 
 #use the gpu
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-print(f'Device is: {device}')
-usingCuda = True
+
+
 
 #Used to calculate the dimensions of an image after it passed through a pool or convolution layer
 def calcLengOfConv(length , kern_size, stride_size = -1):
@@ -30,28 +49,33 @@ def calcLengOfConv(length , kern_size, stride_size = -1):
     return floor((length - kern_size)/stride_size + 1)
 
 #Make the data loaders
-rootForTrain = "/mnt/tmpdata/data/isashu/loaderTrainingFiles"
-rootForTest = "/mnt/tmpdata/data/isashu/loaderTestFiles"
-iiFile = "imageNameAndImageDS.hdf5"
-isFile = "imageNameAndSpots.csv"
-hd_filename = os.path.join(rootForTrain, iiFile)
-cs_filename = os.path.join(rootForTrain, isFile)
-trainset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+def make_datasets():
+    rootForTrain = "/mnt/tmpdata/data/isashu/loaderTrainingFiles"
+    rootForTest = "/mnt/tmpdata/data/isashu/loaderTestFiles"
+    iiFile = "imageNameAndImageDS.hdf5"
+    isFile = "imageNameAndSpots.csv"
+    hd_filename = os.path.join(rootForTrain, iiFile)
+    cs_filename = os.path.join(rootForTrain, isFile)
+    trainset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+
+    hd_filename = os.path.join(rootForTest, iiFile)
+    cs_filename = os.path.join(rootForTest, isFile)
+    testset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+
+    return trainset, testset
+
+trainset, testset = make_datasets()
 trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
                                           shuffle=True)
-hd_filename = os.path.join(rootForTest, iiFile)
-cs_filename = os.path.join(rootForTest, isFile)
-testset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
 testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
                                          shuffle=False)
 
+
 #Define the Convolutional Neural Network
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self, mpk=1, fema=3):
         super().__init__()
         #Images have already gone through a 5*5 MaxPool2d.
-        mpk = 1
-        fema = 3
         self.pool = nn.MaxPool2d(kernel_size=mpk, stride=mpk)
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=fema, kernel_size=(5, 5), stride=1) #1 input chanels, 3 convolution layers, 5 x 5 convolution
         #self.pool2 = nn.MaxPool2d(1, 1)
@@ -76,8 +100,11 @@ class Net(nn.Module):
         #x = self.fc3(x)
         return x
 
+
 #Make the network and have it utilize the gpu
 net = Net()
+logging.info(f'Network is: {net}')
+torch.save(net.state_dict(), pathToModel) #save the model
 
 if (torch.cuda.device_count()> 1) and useMultipleGPUs:
     print(f"Let's use {torch.cuda.device_count()} GPUs!")
@@ -90,11 +117,14 @@ criterion = nn.MSELoss()
 optimizer = optim.SGD(net.parameters(), lr=0.00000000001, momentum=0.3) #lr=0.00000000001, momentum=0.3
 
 #Train the network
-costs = [] #These lists are necessary for keeping track of the models progress
+training_losses = [] #These lists are necessary for keeping track of the models progress
 accuracies = []
 con_accs = []
+test_losses = []
+contr_losses = []
+ftimes = []
 for epoch in range(EPOCHS):  # loop over the dataset multiple times
-    running_loss = 0.0
+    training_loss = 0.0
     for i, data in enumerate(trainloader, 0):
         t = time.time()
         # get the inputs; data is a list of [inputs, labels]
@@ -119,7 +149,8 @@ for epoch in range(EPOCHS):  # loop over the dataset multiple times
 
         ti = time.time()
         loss = criterion(outputs, labels) #compute the loss
-        costs.append(loss.item())
+        training_loss += loss.item()
+
 
         etime = time.time() - ti
         print('took %.4f seconds to compute the loss' % etime)
@@ -133,16 +164,14 @@ for epoch in range(EPOCHS):  # loop over the dataset multiple times
         optimizer.step()
         etime = time.time() - ti
         print('took %.4f seconds to adjust the parameters' % etime)
-
-        # print statistics
-        running_loss += loss.item()
-        t = time.time() - t
-        print("took %.4f seconds to run one batch" % t)
-        print()
+    training_losses.append(training_loss)
+    ftimes.append(time.time())
 
     total = 0
     correct = 0
     cont_cor = 0
+    test_loss = 0
+    contr_loss =0
     with torch.no_grad():
         for data in testloader:
             if usingCuda:
@@ -151,6 +180,7 @@ for epoch in range(EPOCHS):  # loop over the dataset multiple times
                 inputs, labels = data
             # calculate outputs by running images through the network
             outputs = net(inputs)
+            test_loss += criterion(outputs, labels).item()  # compute the loss
             print('arrived at predictions')
             total += labels.size(0)
             correct += (abs(outputs - labels)/labels < ERR_MARGIN).sum().item()
@@ -158,12 +188,20 @@ for epoch in range(EPOCHS):  # loop over the dataset multiple times
             #Check how guessing the mean value of spots compares. Mean is 402.8 spots
             control = torch.zeros_like(outputs)
             control.add_(403.)
+            contr_loss += criterion(control, labels).item()
             cont_cor += (abs(control - labels)/labels < ERR_MARGIN).sum().item()
 
     accuracies.append(100 * correct // total)
     con_accs.append(100 * cont_cor//total)
 
+    test_losses.append(test_loss)
+    contr_losses.append(contr_loss)
+
 print('Finished Training')
+
+# #Load a model.
+# net = Net()
+# net.load_state_dict(torch.load(pathToModel))
 
 #Test on the whole dataset
 correct = 0
@@ -184,15 +222,19 @@ with torch.no_grad():
         correct += (abs(outputs - labels)/labels < ERR_MARGIN).sum().item()
 print(f'Accuracy of the network on the test images: {100 * correct // total} %')
 
+#log the run
+logging.info(f'Epoch finishing times: {ftimes}')
+logging.info(f'Training losses:{training_losses}')
+logging.info(f'Test losses: {test_losses}')
+
 #show the costs over time
-x = range(len(costs))
-y = costs
+x = range(len(training_losses))
+y = training_losses
 f, (ax1, ax2) = plt.subplots(2, 1)
 ax1.plot(x, y)
 
-a = range(len(accuracies))
-b = accuracies
-ax2.plot(a, b)
-ax2.plot(a, con_accs)
+a = range(len(test_losses))
+ax2.plot(a, test_losses)
+ax2.plot(a, contr_losses)
 
 plt.show()
