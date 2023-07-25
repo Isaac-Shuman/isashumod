@@ -13,7 +13,7 @@ from torchvision.io import read_image
 annotations_file should be the full path of the csv file with rows [image name, # of spots]
 '''
 
-LAL = 5 #Use 1/LAL of the dataset
+#LAL = 5 #Use 1/LAL of the dataset
 class CustomImageDataset(Dataset):
 
     def __init__(self, annotations_file, path_to_hdf5, transform=None, target_transform=None, test=False):
@@ -24,7 +24,7 @@ class CustomImageDataset(Dataset):
         self.test = test
 
     def __len__(self):
-        return len(self.img_labels)//LAL
+        return 200 #len(self.img_labels)//LAL
 
     def __getitem__(self, idx):
         #get the image as a numpy array
