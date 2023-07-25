@@ -104,7 +104,6 @@ class Net(nn.Module):
 #Make the network and have it utilize the gpu
 net = Net()
 logging.info(f'Network is: {net}')
-torch.save(net.state_dict(), pathToModel) #save the model
 
 if (torch.cuda.device_count()> 1) and useMultipleGPUs:
     print(f"Let's use {torch.cuda.device_count()} GPUs!")
@@ -198,6 +197,7 @@ for epoch in range(EPOCHS):  # loop over the dataset multiple times
     contr_losses.append(contr_loss)
 
 print('Finished Training')
+torch.save(net.state_dict(), pathToModel) #save the model
 
 # #Load a model.
 # net = Net()
