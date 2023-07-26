@@ -19,7 +19,7 @@ from torch.utils.data import random_split
 #Setup for the run info files
 def setupInfoFiles():
     rootFolderName = '/mnt/tmpdata/data/isashu/runFolders'
-    folderName = os.path.join(rootFolderName,str(time.strftime('run_%Y-%m-%d_%H:%M:%S')))
+    folderName = os.path.join(rootFolderName,str(time.strftime('run_%Y-%m-%d_%H_%M_%S')))
     logName = 'metrics.log'
 
     os.mkdir(folderName)
