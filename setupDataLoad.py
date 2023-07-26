@@ -1,9 +1,5 @@
 #export HDF5_USE_FILE_LOCKING=FALSE
 
-#TODO
-#1.Add the ability to specify what percentage of the files you would like to make the dataset for
-#2.Test it
-
 import os
 import csv
 import h5py
@@ -14,14 +10,6 @@ from IPython import embed
 
 
 
-exit()
-'''
-h.attrs["condition_method_name"] = cond_meth_name
-    for i_img, raw_img in enumerate(raw_imgs): # loop over expts or whatever
-        cond_img = cond_meth(raw_img)
-        h.create_dataset("something_%d.expt" % i_img, data=cond_img) # e.g.
-'''
-
 '''
 This script creates:
 1. An hdf5 file that stores the images(as matrices) for each .exp file
@@ -29,7 +17,7 @@ This script creates:
 '''
 # 1. Change the directory name
 raw_dir = '/mnt/tmpdata/data/test_spots/for_isaac'
-pro_dir = '/mnt/tmpdata/data/isashu/secLoaderTrainingFiles'
+pro_dir = '/mnt/tmpdata/data/isashu/secLoaderTrainFiles'
 # Open an hdf file
 hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
 cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
@@ -41,7 +29,8 @@ hd.attrs["condition_method_name"] = cond_meth_name
 
 cs = open(cs_filename, 'w')
 writer = csv.writer(cs)
-bo = True
+
+bo = True #I used bo to jankily divide the raw data into 2 sets
 for filename in os.listdir(raw_dir):
     print(filename)
     if bo:
