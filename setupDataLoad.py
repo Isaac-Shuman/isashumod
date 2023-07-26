@@ -23,7 +23,7 @@ hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
 cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
 hd = h5py.File(hd_filename, "w")
 
-cond_meth_name = "nothing"
+cond_meth_name = "resize_alpha"
 cond_meth = getattr(condition, cond_meth_name)()
 
 cs = open(cs_filename, 'w')
@@ -64,5 +64,6 @@ for filename in os.listdir(raw_dir):
 
 cs.close()
 hd.attrs["condition_method_name"] = cond_meth_name
+hd.attrs["root folder"] = raw_dir
 hd.close()
 
