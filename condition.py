@@ -2,6 +2,8 @@
 
 import torch
 
+def tester():
+    print("he")
 
 def mx_alpha():
     return torch.nn.MaxPool2d(5, stride=1)
