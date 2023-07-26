@@ -10,6 +10,9 @@ def mx_alpha():
 def mx_beta():
     return torch.nn.MaxPool2d(3, stride=1)
 
+def nothing():
+    return torch.nn.Identity()
+
 
 
 
