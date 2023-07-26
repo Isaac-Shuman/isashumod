@@ -25,20 +25,24 @@ hd = h5py.File(hd_filename, "w")
 
 cond_meth_name = "nothing"
 cond_meth = getattr(condition, cond_meth_name)()
-hd.attrs["condition_method_name"] = cond_meth_name
 
 cs = open(cs_filename, 'w')
 writer = csv.writer(cs)
 
-bo = True #I used bo to jankily divide the raw data into 2 sets
-for filename in os.listdir(raw_dir):
-    print(filename)
-    if bo:
-        if filename == "idx-Try4mgA1n_1_00299_strong.expt":
-            bo = False
-        continue
+num_files = len(os.listdir(raw_dir))
+per_files = 1
+firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
-    print(filename + " was accepted")
+i = 0
+for filename in os.listdir(raw_dir):
+    i += 1
+    print(filename)
+    # If we want the first per_files*100 percent of files, break the for loop as soon as i is past a certain index
+    if firstFiles and i > per_files * num_files:
+        break
+    # If we want the last per_files*100 percent of files, don't load the files until i is past a certain index
+    if not firstFiles and i <= (1 - per_files)*num_files + 1:
+        continue
 
     if filename.endswith('.expt'):
         # 4.Extract the numpy image from the experiment file
@@ -59,5 +63,6 @@ for filename in os.listdir(raw_dir):
         writer.writerow([filename, num_spot])
 
 cs.close()
+hd.attrs["condition_method_name"] = cond_meth_name
 hd.close()
-# 6. Close the hdf file
+
