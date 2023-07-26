@@ -15,6 +15,12 @@ def mx_beta():
 def nothing():
     return torch.nn.Identity()
 
+def resize_alpha():
+    '''
+    Forces the dimensions to half the size of the images from
+    '''
+    return torch.transforms.Resize(1263, 1231)
+
 
 
 
