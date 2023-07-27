@@ -1,6 +1,7 @@
 
 
 import torch
+import torchvision
 
 def tester():
     print("he")
@@ -19,7 +20,8 @@ def resize_alpha():
     '''
     Forces the dimensions to half the size of the images from
     '''
-    return torch.transforms.Resize(1263, 1231)
+    res = torchvision.transforms.Resize((1263, 1231))
+    return res
 
 
 

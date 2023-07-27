@@ -38,15 +38,16 @@ def calcLengOfConv(length , kern_size, stride_size = -1):
 #Make the data loaders
 def make_datasets(rootForTrain, rootForTest):
 
-    iiFile = "imageNameAndImageDS.hdf5"
+    transf = transforms.Compose([])
+    iiFile = "imageNameAndImage.hdf5"
     isFile = "imageNameAndSpots.csv"
     hd_filename = os.path.join(rootForTrain, iiFile)
     cs_filename = os.path.join(rootForTrain, isFile)
-    trainset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+    trainset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=transf)
 
     hd_filename = os.path.join(rootForTest, iiFile)
     cs_filename = os.path.join(rootForTest, isFile)
-    testset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+    testset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=transf)
 
     return trainset, testset
 
@@ -77,8 +78,8 @@ class Net(nn.Module):
         #self.pool2 = nn.MaxPool2d(1, 1)
         #self.conv2 = nn.Conv2d(1, 16, 5)
         #self.avg = nn.AvgPool2d((501, 488))
-        width_of_x = calcLengOfConv(length=(calcLengOfConv(length=505, kern_size=mpk, stride_size=mpk)), kern_size=5, stride_size=1)
-        width_of_y = calcLengOfConv(length=(calcLengOfConv(length=492, kern_size=mpk, stride_size=mpk)), kern_size=5, stride_size=1)
+        width_of_x = calcLengOfConv(length=(calcLengOfConv(length=1263, kern_size=mpk, stride_size=mpk)), kern_size=5, stride_size=1)
+        width_of_y = calcLengOfConv(length=(calcLengOfConv(length=1231, kern_size=mpk, stride_size=mpk)), kern_size=5, stride_size=1)
 
         self.fc1 = nn.Linear(fema*int(width_of_x*width_of_y), 1)
         #self.fc2 = nn.Linear(120, 84)
@@ -90,7 +91,6 @@ class Net(nn.Module):
         #x = F.relu(self.conv2(x))
         #x = self.pool2(x)
         x = torch.flatten(x, 1) # flatten all dimensions except batch
-        #len(x) = 180048
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
         #x = self.fc3(x)
@@ -184,10 +184,10 @@ def train_up_model(useCuda, useMultipleGPUs, device, trainloader, valloader, fti
     # contr_losses = []
 
     for epoch in range(epochs):  # loop over the dataset multiple times
+        validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
         descend(trainloader=trainloader, usingCuda=useCuda, device=device, optimizer=optimizer, net=net,
                 criterion=criterion, train_losses=train_losses, ftimes=ftimes)
 
-        validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
 
     print('Finished Training')
     return net
@@ -238,17 +238,22 @@ def plot_metrics(train_losses, test_losses):
 
     plt.show()
 
+def loadModel(pathToModel):
+    net = Net()
+    net.load_state_dict(torch.load(pathToModel))
+    return net
 def main():
     err_margin = 0.1  # How far off a "correct" prediction can be as a percentage (0.1 is 10%)
     batch_size = 10
     epochs = 20
     useMultipleGPUs = False
     useCuda = True
+    lm = False #Do you wanna load a model?
 
-    rootForTrain = "/mnt/tmpdata/data/isashu/loaderTrainingFiles"
-    rootForTest = "/mnt/tmpdata/data/isashu/loaderTestFiles"
+    rootForTrain = "/mnt/tmpdata/data/isashu/thirdLoader/trainFiles"
+    rootForTest = "/mnt/tmpdata/data/isashu/thirdLoader/testFiles"
 
-    pathToModel = setupInfoFiles()
+    pathToModel = setupInfoFiles() #pathToModel is of form 'run_%Y-%m-%d_%H_%M_%S/model.pth'
 
     # use the gpu
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -259,17 +264,21 @@ def main():
     ftimes = []
     train_losses = []
     val_losses = []
-    net = train_up_model(
-        useCuda=useCuda,
-        useMultipleGPUs=useMultipleGPUs,
-        device=device,
-        trainloader=trainloader,
-        valloader=valloader,
-        ftimes=ftimes,
-        train_losses=train_losses,
-        val_losses=val_losses,
-        epochs=epochs
-    )
+    if not lm:
+        net = train_up_model(
+            useCuda=useCuda,
+            useMultipleGPUs=useMultipleGPUs,
+            device=device,
+            trainloader=trainloader,
+            valloader=valloader,
+            ftimes=ftimes,
+            train_losses=train_losses,
+            val_losses=val_losses,
+            epochs=epochs
+        )
+    else:
+        net = loadModel(pathToModel)
+
     accuracy = test(
         testloader=testloader,
         useCuda=useCuda,
@@ -288,10 +297,6 @@ def main():
         rootForTest=rootForTest
     )
     plot_metrics(train_losses=train_losses, test_losses=val_losses)
-
-    # #Load a model.
-    # net = Net()
-    # net.load_state_dict(torch.load(pathToModel))
 
 if __name__ == "__main__":
     main()
