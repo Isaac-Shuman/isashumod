@@ -6,7 +6,7 @@ import pandas as pd
 import h5py
 from matplotlib import pyplot as plt
 import numpy
-
+from IPython import embed
 from torchvision.io import read_image
 
 '''
@@ -44,11 +44,13 @@ class CustomImageDataset(Dataset):
             lt = 0
             up = 20000  # the upper threshold is actually this value + 60
             image[image < lt] = lt
+            image = torch.tensor(image)
             #image[image > up] = up
 
             if len(image.shape) == 2:
                 image = image[None]  # this is called broadcasting, adds an extra dimension
-            image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
+            #image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
+
             #image = self.transform(image)
         if self.target_transform:
             label = self.target_transform(label)
