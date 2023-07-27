@@ -17,7 +17,7 @@ This script creates:
 '''
 # 1. Change the directory name
 raw_dir = '/mnt/tmpdata/data/test_spots/for_isaac'
-pro_dir = '/mnt/tmpdata/data/isashu/thirdLoader/testFiles'
+pro_dir = '/mnt/tmpdata/data/isashu/fourthLoader/trainFiles'
 # Open an hdf file
 hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
 cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
@@ -30,8 +30,8 @@ cs = open(cs_filename, 'w')
 writer = csv.writer(cs)
 
 num_files = len(os.listdir(raw_dir))
-per_files = 0.2
-firstFiles = False #True if you are making the dataset from the first several files as opposed to the last several files
+per_files = 0.8
+firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
 i = 0
 for filename in os.listdir(raw_dir):
@@ -51,7 +51,7 @@ for filename in os.listdir(raw_dir):
         raw_img = El[0].imageset.get_raw_data(0)[0].as_numpy_array()
 
         cond_img = torch.tensor(raw_img.astype(numpy.float32)).unsqueeze(0).unsqueeze(0)
-        cond_img = cond_meth(cond_img).squeeze()
+        cond_img = cond_meth(cond_img)#.squeeze()
         # 5.Store the numpy image in the hdf file
         dset = hd.create_dataset(filename, data=cond_img)
 
