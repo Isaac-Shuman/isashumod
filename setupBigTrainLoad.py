@@ -22,7 +22,7 @@ raw_directories = ['1.42ADump', '1.450ADump', '1.45ADump', '1.50ADump', '1.60ADu
                    '1.66ADump', '1.70ADump', '1.72ADump', '1.74ADump', '1.76ADump', '1.81ADump',
                    '1.85ADump', '1.8ADump', '1.95ADump', '2.0ADump', '2.5ADump', '2.80ADump', '2.85ADump', '2.90ADump', '5.40ADump']
 
-pro_big_dir = '/mnt/tmpdata/data/isashu/bigLoaders/firstBigTrainLoader'
+pro_big_dir = '/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader'
 
 #make everything go in the for loop and delete the current pro_dir
 ini = time.time()
@@ -47,7 +47,7 @@ for di in raw_directories: #for direct in raw_directiories
     # generate the path...
     raw_dir = os.path.join(raw_big_dir, di)  # 1.for the raw directory
     num_files = len(os.listdir(raw_dir))
-    per_files = 1
+    per_files = 0.01
     firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
     i = 0
@@ -67,7 +67,7 @@ for di in raw_directories: #for direct in raw_directiories
             El = ExperimentList.from_file(os.path.join(raw_dir, filename))
             raw_img = El[0].imageset.get_raw_data(0)[0].as_numpy_array()
 
-            cond_img = torch.tensor(raw_img.astype(numpy.float32)).unsqueeze(0).unsqueeze(0)
+            cond_img = torch.tensor(raw_img.astype(numpy.float32)).unsqueeze(0)
             cond_img = cond_meth(cond_img)#.squeeze()
             # 5.Store the numpy image in the hdf file
             dset = hd.create_dataset(filename, data=cond_img)

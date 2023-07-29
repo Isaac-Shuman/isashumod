@@ -38,12 +38,12 @@ def calcLengOfConv(length , kern_size, stride_size = -1):
 #Make the data loaders
 def make_dataset(root):
 
-    transf = transforms.Compose([]) #Do I need this?
+    #transf = transforms.Compose([]) #Do I need this?
     iiFile = "imageNameAndImage.hdf5"
     isFile = "imageNameAndSpots.csv"
     hd_filename = os.path.join(root, iiFile)
     cs_filename = os.path.join(root, isFile)
-    dataset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=transf)
+    dataset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename)#, transform=transf)
 
     return dataset
 
@@ -109,10 +109,7 @@ def descend(trainloader, usingCuda, device, optimizer, net, criterion, train_los
     for i, data in enumerate(trainloader, 0):
         t = time.time()
         # get the inputs; data is a list of [inputs, labels]
-        if usingCuda:
-            inputs, labels = data[0].to(device), data[1].to(device)
-        else:
-            inputs, labels = data
+        inputs, labels = data[0].to(device), data[1].to(device)
 
         etime = time.time() - t
         print('took %.4f seconds to separate the tuple "data"' % etime)
@@ -246,10 +243,10 @@ def main():
     useCuda = True
     lm = False #Do you wanna load a model?
 
-    rootForTrain = "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTrainLoader"
-    rootsForTest = ["/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/1.25ALoader",
-                    "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/3.15ALoader",
-                    "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/5.45ALoader"]
+    rootForTrain = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader"
+    rootsForTest = ["/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/1.25ALoader",
+                    "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/3.15ALoader",
+                    "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/5.45ALoader"]
     
     pathToModel = setupInfoFiles() #pathToModel is of form 'run_%Y-%m-%d_%H_%M_%S/model.pth'
 
