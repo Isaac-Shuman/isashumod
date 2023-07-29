@@ -18,7 +18,7 @@ This script creates:
 # 1. Change the directory
 raw_big_dir = '/mnt/tmpdata/data/isashu/exptFileDumps'
 raw_directories = ['1.25ADump', '3.15ADump', '5.45ADump']
-pro_big_dir = '/mnt/tmpdata/data/isashu/bigLoaders/firstBigTestLoaders'
+pro_big_dir = '/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders'
 
 #make everything go in the for loop and delete the current pro_dir
 for di in raw_directories: #for direct in raw_directiories
@@ -28,7 +28,7 @@ for di in raw_directories: #for direct in raw_directiories
     # Open an hdf file
     hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
     cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
-    hd = h5py.File(hd_filename, "w")
+    hd = h5py.File(hd_filename, "w-")
 
     cond_meth_name = "resize_alpha"
     cond_meth = getattr(condition, cond_meth_name)()
@@ -37,7 +37,7 @@ for di in raw_directories: #for direct in raw_directiories
     writer = csv.writer(cs)
 
     num_files = len(os.listdir(raw_dir))
-    per_files = 0.8
+    per_files = 0.1
     firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
     i = 0

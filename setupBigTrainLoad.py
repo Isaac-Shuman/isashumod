@@ -10,6 +10,7 @@ from IPython import embed
 import numpy
 import torch
 import time
+
 '''
 This script creates:
 1. An hdf5 file that stores the images(as matrices) for each .exp file
@@ -25,23 +26,28 @@ pro_big_dir = '/mnt/tmpdata/data/isashu/bigLoaders/firstBigTrainLoader'
 
 #make everything go in the for loop and delete the current pro_dir
 ini = time.time()
+
+
+pro_dir = pro_big_dir
+# Open an hdf file
+hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
+cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
+
+
+hd = h5py.File(hd_filename, "w-") #The w- should cause this command to fail if the file already exists
+
+cond_meth_name = "resize_alpha"
+cond_meth = getattr(condition, cond_meth_name)()
+
+cs = open(cs_filename, 'w')
+writer = csv.writer(cs)
+
 for di in raw_directories: #for direct in raw_directiories
-#generate the path...
-    raw_dir = os.path.join(raw_big_dir, di)#1.for the raw directory
-    pro_dir = pro_big_dir
-    # Open an hdf file
-    hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
-    cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
-    hd = h5py.File(hd_filename, "w")
-
-    cond_meth_name = "resize_alpha"
-    cond_meth = getattr(condition, cond_meth_name)()
-
-    cs = open(cs_filename, 'w')
-    writer = csv.writer(cs)
-
+    print(di)
+    # generate the path...
+    raw_dir = os.path.join(raw_big_dir, di)  # 1.for the raw directory
     num_files = len(os.listdir(raw_dir))
-    per_files = 0.8
+    per_files = 1
     firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
     i = 0
@@ -75,7 +81,7 @@ for di in raw_directories: #for direct in raw_directiories
             writer.writerow([filename, num_spot])
     print(f'Time is: {time.time() - ini}')
 
-    cs.close()
-    hd.attrs["condition_method_name"] = cond_meth_name
-    hd.attrs["root folder"] = raw_dir
-    hd.close()
+cs.close()
+hd.attrs["condition_method_name"] = cond_meth_name
+hd.attrs["root folder"] = raw_big_dir
+hd.close()
