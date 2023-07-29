@@ -36,37 +36,32 @@ def calcLengOfConv(length , kern_size, stride_size = -1):
     return floor((length - kern_size)/stride_size + 1)
 
 #Make the data loaders
-def make_datasets(rootForTrain, rootForTest):
+def make_dataset(root):
 
-    transf = transforms.Compose([])
+    transf = transforms.Compose([]) #Do I need this?
     iiFile = "imageNameAndImage.hdf5"
     isFile = "imageNameAndSpots.csv"
-    hd_filename = os.path.join(rootForTrain, iiFile)
-    cs_filename = os.path.join(rootForTrain, isFile)
-    trainset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=transf)
+    hd_filename = os.path.join(root, iiFile)
+    cs_filename = os.path.join(root, isFile)
+    dataset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=transf)
 
-    hd_filename = os.path.join(rootForTest, iiFile)
-    cs_filename = os.path.join(rootForTest, isFile)
-    testset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=transf)
+    return dataset
 
-    return trainset, testset
-
-def make_dataloaders(trainset, testset,batch_size):
-    #Split the training set into 50% training and 50% validation data
-
-
+def make_trainValLoaders(trainset, batch_size):
+    # Split the training set into 50% training and 50% validation data
     test_abs = int(len(trainset) * 0.5)
     generator = torch.Generator().manual_seed(1)
     train_subset, val_subset = random_split(
         trainset, [test_abs, len(trainset) - test_abs], generator=generator
     )
     trainloader = torch.utils.data.DataLoader(train_subset, batch_size=batch_size,
-                                             shuffle=True)
+                                              shuffle=True)
     valloader = torch.utils.data.DataLoader(val_subset, batch_size=batch_size,
+                                            shuffle=True)
+    return trainloader, valloader
+def make_testloader(dataset, batch_size):
+    return torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                              shuffle=True)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False)
-    return trainloader, valloader, testloader
 
 #Define the Convolutional Neural Network
 class Net(nn.Module):
@@ -88,6 +83,7 @@ class Net(nn.Module):
         #x.shape = 505 * 492
         #x = self.pool(x)
         x = F.relu(self.conv1(x))
+
         #x = F.relu(self.conv2(x))
         #x = self.pool2(x)
         x = torch.flatten(x, 1) # flatten all dimensions except batch
@@ -208,7 +204,7 @@ def test(testloader, useCuda, device, net, err_margin):
             total += labels.size(0)
             correct += (abs(outputs - labels) / labels < err_margin).sum().item()
     return correct/total
-def save_run(net, train_losses, ftimes, val_losses, accuracy, rootForTrain, rootForTest):
+def save_run(net, train_losses, ftimes, val_losses, accuracies, rootForTrain, rootForTest):
     #Log the statistics of the run and save the model
     pathToModel, log_filename = setupInfoFiles()
     logging.basicConfig(filename=log_filename, encoding='utf-8', level=logging.INFO, filemode='a')
@@ -220,7 +216,7 @@ def save_run(net, train_losses, ftimes, val_losses, accuracy, rootForTrain, root
     logging.info(f'Epoch finishing times: {ftimes}')
     logging.info(f'Training losses:{train_losses}')
     logging.info(f'Validation losses losses: {val_losses}')
-    logging.info(f'Final accuracy: {accuracy}')
+    logging.info(f'Final accuracies: {accuracies}')
 
 def plot_metrics(train_losses, test_losses):
     # show the costs over time
@@ -245,21 +241,25 @@ def loadModel(pathToModel):
 def main():
     err_margin = 0.1  # How far off a "correct" prediction can be as a percentage (0.1 is 10%)
     batch_size = 10
-    epochs = 20
+    epochs = 50
     useMultipleGPUs = False
     useCuda = True
     lm = False #Do you wanna load a model?
 
-    rootForTrain = "/mnt/tmpdata/data/isashu/thirdLoader/trainFiles"
-    rootForTest = "/mnt/tmpdata/data/isashu/thirdLoader/testFiles"
-
+    rootForTrain = "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTrainLoader"
+    rootsForTest = ["/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/1.25ALoader",
+                    "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/3.15ALoader",
+                    "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/5.45ALoader"]
+    
     pathToModel = setupInfoFiles() #pathToModel is of form 'run_%Y-%m-%d_%H_%M_%S/model.pth'
 
     # use the gpu
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    trainset, testset = make_datasets(rootForTrain=rootForTrain, rootForTest=rootForTest)
-    trainloader, valloader, testloader = make_dataloaders(trainset, testset,batch_size=batch_size)
+    trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=batch_size)
+    testloaders = []
+    for rootForTest in rootsForTest:
+        testloaders.append(make_testloader(make_dataset(root=rootForTest), batch_size=batch_size))
 
     ftimes = []
     train_losses = []
@@ -279,24 +279,29 @@ def main():
     else:
         net = loadModel(pathToModel)
 
-    accuracy = test(
-        testloader=testloader,
-        useCuda=useCuda,
-        device=device,
-        net=net,
-        err_margin=err_margin
-    )
+    accuracies = []
+    for testloader in testloaders:
+        accuracy = test(
+            testloader=testloader,
+            useCuda=useCuda,
+            device=device,
+            net=net,
+            err_margin=err_margin
+        )
+        accuracies.append(accuracy)
+
 
     save_run(
         net=net,
         train_losses=train_losses,
         ftimes=ftimes,
         val_losses=val_losses,
-        accuracy=accuracy,
+        accuracies=accuracies,
         rootForTrain=rootForTrain,
         rootForTest=rootForTest
     )
     plot_metrics(train_losses=train_losses, test_losses=val_losses)
+    print(f'Accuracies are {accuracies}')
 
 if __name__ == "__main__":
     main()

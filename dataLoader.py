@@ -47,8 +47,9 @@ class CustomImageDataset(Dataset):
             image = torch.tensor(image)
             #image[image > up] = up
 
-            if len(image.shape) == 2:
-                image = image[None]  # this is called broadcasting, adds an extra dimension
+            image = image.squeeze(dim=0)
+            # if len(image.shape) == 2:
+            #     image = image[None]  # this is called broadcasting, adds an extra dimension
             #image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
 
             #image = self.transform(image)
