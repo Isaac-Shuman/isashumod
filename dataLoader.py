@@ -22,6 +22,18 @@ class CustomImageDataset(Dataset):
         self.transform = transform
         self.target_transform = target_transform
         self.test = test
+        #self.fobj = h5py.File(self.path_to_hdf5, 'r')
+        self.dic = {}
+        for idx in range(len(self.img_labels)//LAL):
+            with h5py.File(self.path_to_hdf5, 'r') as f:
+                image = f[self.img_labels.iloc[idx, 0]][()]
+            # get the number of spots
+            label = self.img_labels.iloc[idx, 1]
+            # label = torch.from_numpy(label)
+            label = torch.tensor([label]).type(torch.float32)  # label transformation
+            self.dic[idx] = (image, label)
+
+
 
     def __len__(self):
         return len(self.img_labels)//LAL
@@ -29,34 +41,37 @@ class CustomImageDataset(Dataset):
     def __getitem__(self, idx):
         #get the image as a numpy array
         #The first 300 items are reserved for the testing data set
-        idx_offset = 0
         #if not self.test:
          #   idx_offset += 300
-        with h5py.File(self.path_to_hdf5, 'r') as f:
-            image = f[self.img_labels.iloc[idx + idx_offset, 0]][()]
-        #get the number of spots
-        label = self.img_labels.iloc[idx + idx_offset, 1]
-        #label = torch.from_numpy(label)
-        label = torch.tensor([label]).type(torch.float32) #label transformation
+        # with h5py.File(self.path_to_hdf5, 'r') as f:
+        #     image = f[self.img_labels.iloc[idx, 0]][()]
+        # #get the number of spots
+        # label = self.img_labels.iloc[idx, 1]
+        # #label = torch.from_numpy(label)
+        # label = torch.tensor([label]).type(torch.float32) #label transformation
+        #
 
-        #stuff
-        if self.transform:
-            lt = 0
-            up = 20000  # the upper threshold is actually this value + 60
-            image[image < lt] = lt
-            image = torch.tensor(image)
-            #image[image > up] = up
+        # #stuff
+        # if self.transform:
+        #     lt = 0
+        #     up = 20000  # the upper threshold is actually this value + 60
+        #     image[image < lt] = lt
+        #     image = torch.tensor(image)
+        #     #image[image > up] = up
+        #
+        #     image = image.squeeze(dim=0)
+        #     # if len(image.shape) == 2:
+        #     #     image = image[None]  # this is called broadcasting, adds an extra dimension
+        #     #image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
+        #
+        #     #image = self.transform(image)
+        # if self.target_transform:
+        #     label = self.target_transform(label)
 
-            image = image.squeeze(dim=0)
-            # if len(image.shape) == 2:
-            #     image = image[None]  # this is called broadcasting, adds an extra dimension
-            #image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
-
-            #image = self.transform(image)
-        if self.target_transform:
-            label = self.target_transform(label)
-
-        return image, label
+        #return image, label
+        return self.dic[idx]
+    #def __del__(self):
+     #   self.fobj.close()
 
 '''
 # from IPython import embed;
