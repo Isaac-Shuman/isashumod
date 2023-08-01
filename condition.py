@@ -3,6 +3,7 @@
 import torch
 import torchvision
 
+#initial size: (2527, 2463)
 def tester():
     print("he")
 
@@ -23,6 +24,8 @@ def resize_alpha():
     res = torchvision.transforms.Resize((1263, 1231))
     return res
 
+def resize_beta():
+    return torchvision.transforms.Resize((842, 821))
 
 
 

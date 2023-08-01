@@ -8,7 +8,8 @@ from matplotlib import pyplot as plt
 import numpy
 from IPython import embed
 from torchvision.io import read_image
-
+from torchvision.models import resnet50, ResNet50_Weights #Added for ResNet
+import torchvision
 '''
 annotations_file should be the full path of the csv file with rows [image name, # of spots]
 '''
@@ -42,17 +43,18 @@ class CustomImageDataset(Dataset):
         #stuff
         if self.transform:
             lt = 0
-            up = 20000  # the upper threshold is actually this value + 60
-            image[image < lt] = lt
-            image = torch.tensor(image)
-            #image[image > up] = up
+            # up = 20000  # the upper threshold is actually this value + 60
+            # image[image < lt] = lt
+            # image = torch.tensor(image)
+            # #image[image > up] = up
 
-            image = image.squeeze(dim=0)
+            #image = image.squeeze(dim=0)
             # if len(image.shape) == 2:
             #     image = image[None]  # this is called broadcasting, adds an extra dimension
             #image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
 
-            #image = self.transform(image)
+            #image = self.transform(image).unsqueeze(dim=0) #Added for ResNet
+            #image = numpy.repeat(image, 3, axis=0) #take this out and modify the ResNet
         if self.target_transform:
             label = self.target_transform(label)
 
