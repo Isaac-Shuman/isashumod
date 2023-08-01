@@ -1,5 +1,7 @@
 #export HDF5_USE_FILE_LOCKING=FALSE
 
+#Initial image size (2527, 2463)
+
 import os
 import csv
 import h5py
@@ -18,7 +20,10 @@ This script creates:
 # 1. Change the directory
 raw_big_dir = '/mnt/tmpdata/data/isashu/exptFileDumps'
 raw_directories = ['1.25ADump', '3.15ADump', '5.45ADump']
-pro_big_dir = '/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders'
+pro_big_dir = '/mnt/tmpdata/data/isashu/bigLoaders/firstBigTestLoaders'
+
+cond_meth_name = "resize_beta"
+cond_meth = getattr(condition, cond_meth_name)()
 
 #make everything go in the for loop and delete the current pro_dir
 for di in raw_directories: #for direct in raw_directiories
@@ -30,14 +35,11 @@ for di in raw_directories: #for direct in raw_directiories
     cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
     hd = h5py.File(hd_filename, "w-")
 
-    cond_meth_name = "resize_alpha"
-    cond_meth = getattr(condition, cond_meth_name)()
-
     cs = open(cs_filename, 'w')
     writer = csv.writer(cs)
 
     num_files = len(os.listdir(raw_dir))
-    per_files = 0.01
+    per_files = 1
     firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
     i = 0
@@ -58,7 +60,6 @@ for di in raw_directories: #for direct in raw_directiories
             raw_img = El[0].imageset.get_raw_data(0)[0].as_numpy_array()
 
             cond_img = torch.tensor(raw_img.astype(numpy.float32)).unsqueeze(dim=0)
-            embed()
             cond_img = cond_meth(cond_img)#.squeeze()
             # 5.Store the numpy image in the hdf file
             dset = hd.create_dataset(filename, data=cond_img)

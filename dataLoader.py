@@ -14,7 +14,7 @@ import torchvision
 annotations_file should be the full path of the csv file with rows [image name, # of spots]
 '''
 
-LAL = 1 #Use 1/LAL of the dataset
+#LAL = 1 #Use 1/LAL of the dataset
 class CustomImageDataset(Dataset):
 
     def __init__(self, annotations_file, path_to_hdf5, transform=None, target_transform=None, test=False):
@@ -25,7 +25,7 @@ class CustomImageDataset(Dataset):
         self.test = test
 
     def __len__(self):
-        return len(self.img_labels)//LAL
+        return len(self.img_labels)#//LAL
 
     def __getitem__(self, idx):
         #get the image as a numpy array
@@ -35,7 +35,7 @@ class CustomImageDataset(Dataset):
          #   idx_offset += 300
         with h5py.File(self.path_to_hdf5, 'r') as f:
             image = f[self.img_labels.iloc[idx + idx_offset, 0]][()]
-            #image = torch.zeros(size=(1, 832, 832), dtype=torch.float32) Used for transform to test having 832*832
+            #image = torch.zeros(size=(1, 1263, 1231), dtype=torch.float32) #Used for transform to test having 832*832
         #get the number of spots
         label = self.img_labels.iloc[idx + idx_offset, 1]
         #label = torch.from_numpy(label)
