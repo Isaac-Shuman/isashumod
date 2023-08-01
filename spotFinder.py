@@ -165,6 +165,7 @@ def validate(valloader, device, net, criterion, val_losses):
             val_loss += criterion(outputs, labels).item()  # compute the loss
     # ----
     val_losses.append(val_loss)
+    embed()
 
 def save_epoch(net, epoch, folderName):
     pathToModel = os.path.join(folderName, 'modelE'+str(epoch)+'.pth')
@@ -174,7 +175,7 @@ def train_up_model(useCuda, useMultipleGPUs, device, trainloader, valloader, eti
     #Make the network and have it utilize the gpu
     net = make_net(useCuda, useMultipleGPUs, device)
     criterion = nn.MSELoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.00000000001, momentum=0.3) #lr=0.00000000001, momentum=0.3
+    optimizer = optim.SGD(net.parameters(), lr=1e-10, momentum=0.3) #lr=0.00000000001, momentum=0.3
 
 
     for epoch in range(epochs):  # loop over the dataset multiple times
@@ -230,7 +231,6 @@ def plot_metrics(train_losses, test_losses):
     # ax2.plot(a, test_losses)
     # ax2.plot(a, contr_losses)
 
-    embed()
     plt.plot(train_losses, label='train losses')
     plt.plot(test_losses, label='test losses')
     plt.legend()
@@ -280,11 +280,16 @@ def main():
             train_losses=train_losses,
             val_losses=val_losses,
             epochs=epochs,
-            folderName=folderName
+            folderName=folderName,
+            config=config
         )
     else:
-        pathToModel = os.path.join(folderName, 'modelFinal.pth')
-        net = loadModel(pathToModel)
+        net = loadModel("/mnt/tmpdata/data/isashu/runFolders/run_2023-08-STUFF.pth") #Current network must match loaded network
+        if (torch.cuda.device_count() > 1) and useMultipleGPUs:
+            print(f"Let's use {torch.cuda.device_count()} GPUs!")
+            net = nn.DataParallel(net)
+        if useCuda:
+            net.to(device, dtype=torch.float32)
 
     accuracies = []
     for testloader in testloaders:
@@ -306,7 +311,8 @@ def main():
         accuracies=accuracies,
         rootForTrain=rootForTrain,
         rootForTest=rootsForTest,
-        folderName=folderName
+        folderName=folderName,
+        config=config
     )
     plot_metrics(train_losses=train_losses, test_losses=val_losses)
     print(f'Accuracies are {accuracies}')

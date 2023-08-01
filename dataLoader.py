@@ -35,6 +35,7 @@ class CustomImageDataset(Dataset):
          #   idx_offset += 300
         with h5py.File(self.path_to_hdf5, 'r') as f:
             image = f[self.img_labels.iloc[idx + idx_offset, 0]][()]
+            #image = torch.zeros(size=(1, 832, 832), dtype=torch.float32) Used for transform to test having 832*832
         #get the number of spots
         label = self.img_labels.iloc[idx + idx_offset, 1]
         #label = torch.from_numpy(label)

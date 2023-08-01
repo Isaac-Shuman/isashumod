@@ -14,7 +14,7 @@ from matplotlib import pylab as plt
 from math import floor
 import logging
 from torch.utils.data import random_split
-from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import resnet50, vit_b_16,ResNet50_Weights
 
 
 # Setup for the run info files
@@ -77,18 +77,9 @@ def make_testloader(dataset, batch_size):
 class Net(nn.Module):
     def __init__(self, mpk=1, fema=3):
         super().__init__()
-        # Images have already gone through a 5*5 MaxPool2d.
-        # self.pool = nn.MaxPool2d(kernel_size=mpk, stride=mpk)
-        # self.conv1 = nn.Conv2d(in_channels=1, out_channels=fema, kernel_size=(5, 5),
-        #                        stride=1)  # 1 input chanels, 3 convolution layers, 5 x 5 convolution
-        # # self.pool2 = nn.MaxPool2d(1, 1)
-        # # self.conv2 = nn.Conv2d(1, 16, 5)
-        # # self.avg = nn.AvgPool2d((501, 488))
-        # width_of_x = calcLengOfConv(length=(calcLengOfConv(length=1263, kern_size=mpk, stride_size=mpk)), kern_size=5,
-        #                             stride_size=1)
-        # width_of_y = calcLengOfConv(length=(calcLengOfConv(length=1231, kern_size=mpk, stride_size=mpk)), kern_size=5,
-        #                             stride_size=1)
+
         self.res = resnet50()
+        #self.tra = vit_b_16(image_size=832, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
 
         self.res.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)#nn.Conv2d(1, self.res.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.fc1 = nn.Linear(1000, 1)
@@ -99,18 +90,17 @@ class Net(nn.Module):
         # x = self.pool(x)
         if train:
             self.res.train()
+            #self.tra.train()
         else:
             self.res.eval()
+            #self.tra.eval()
 
         x = self.res(x)
+        #x = self.tra(x)
         x = F.relu(x)
 
-        # x = F.relu(self.conv2(x))
-        # x = self.pool2(x)
-        #x = torch.flatten(x, 1)  # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
-        # x = F.relu(self.fc2(x))
-        # x = self.fc3(x)
+
         return x
 
 
@@ -145,7 +135,7 @@ def descend(trainloader, usingCuda, device, optimizer, net, criterion, train_los
         print('took %.4f seconds to zero the gradients' % etime)
 
         ti = time.time()
-        outputs = net(inputs, True)  # forward
+        outputs = net(inputs, train=True)  # forward
         etime = time.time() - ti
         print('took %.4f seconds to make a prediction' % etime)
 
@@ -181,7 +171,7 @@ def validate(valloader, device, net, criterion, val_losses):
             #     inputs, labels = data
             inputs, labels = data[0].to(device), data[1].to(device)
             # calculate outputs by running images through the network
-            outputs = net(inputs, False)
+            outputs = net(inputs, train=False)
             val_loss += criterion(outputs, labels).item()  # compute the loss
     # ----
     val_losses.append(val_loss)
@@ -194,7 +184,7 @@ def train_up_model(useCuda, useMultipleGPUs, device, trainloader, valloader, eti
     # Make the network and have it utilize the gpu
     net = make_net(useCuda, useMultipleGPUs, device)
     criterion = nn.MSELoss()
-    optimizer = optim.SGD(net.parameters(), lr=0.00000000001, momentum=0.3)  # lr=0.00000000001, momentum=0.3
+    optimizer = optim.SGD(net.parameters(), lr=1e-13, momentum=0.2)  # lr=0.00000000001, momentum=0.3
 
     # Train the network
     # training_losses = [] #These lists are necessary for keeping track of the models progress
@@ -223,7 +213,7 @@ def test(testloader, useCuda, device, net, err_margin):
                 inputs, labels = data[0].to(device), data[1].to(device)
             else:
                 inputs, labels = data
-            outputs = net(inputs, False)
+            outputs = net(inputs, train=False)
             print('arrived at predictions')
             total += labels.size(0)
             correct += (abs(outputs - labels) / labels < err_margin).sum().item()
@@ -283,8 +273,7 @@ def main():
                     "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/3.15ALoader",
                     "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/5.45ALoader"]
 
-    folderName = getInfoFolder()
-
+    folderName = getInfoFolder() #put whatever path you would  like to load here
     # use the gpu
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -307,11 +296,17 @@ def main():
             train_losses=train_losses,
             val_losses=val_losses,
             epochs=epochs,
-            folderName=folderName
+            folderName=folderName,
+            config=config
         )
     else:
-        pathToModel = os.path.join(folderName, 'modelFinal.pth')
-        net = loadModel(pathToModel)
+        net = loadModel("/mnt/tmpdata/data/isashu/runFolders/run_2023-07-31_16_41_49/modelFinal.pth") #Current network must match loaded network
+        if (torch.cuda.device_count() > 1) and useMultipleGPUs:
+            print(f"Let's use {torch.cuda.device_count()} GPUs!")
+            net = nn.DataParallel(net)
+        if useCuda:
+            net.to(device, dtype=torch.float32)
+
 
     accuracies = []
     for testloader in testloaders:
@@ -332,7 +327,8 @@ def main():
         accuracies=accuracies,
         rootForTrain=rootForTrain,
         rootForTest=rootsForTest,
-        folderName=folderName
+        folderName=folderName,
+        config=config
     )
     plot_metrics(train_losses=train_losses, test_losses=val_losses)
     print(f'Accuracies are {accuracies}')
