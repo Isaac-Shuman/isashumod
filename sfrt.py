@@ -13,6 +13,8 @@ from ray.tune.schedulers import ASHAScheduler
 from dataLoader import CustomImageDataset
 import torchvision.transforms.v2 as transforms
 from math import floor
+from IPython import embed
+from torchvision.models import resnet50, vit_b_16,ResNet50_Weights
 
 ERR_MARGIN = 0.1
 def calcLengOfConv(length , kern_size, stride_size = -1):
@@ -21,9 +23,10 @@ def calcLengOfConv(length , kern_size, stride_size = -1):
     return floor((length - kern_size)/stride_size + 1)
 
 #Data loaders
-def load_data():
+def load_data(rootForTrain, rootsForTest):
     rootForTrain = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader"
     rootForTest = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/1.25ALoader"
+
 
     iiFile = "imageNameAndImage.hdf5"
     isFile = "imageNameAndSpots.csv"
@@ -44,15 +47,15 @@ class Net(nn.Module):
         #self.pool2 = nn.MaxPool2d(1, 1)
         #self.conv2 = nn.Conv2d(1, 16, 5)
         #self.avg = nn.AvgPool2d((501, 488))
-        width_of_x = calcLengOfConv(length=505, kern_size=cvk,
+        width_of_x = calcLengOfConv(length=1263, kern_size=cvk,
                                     stride_size=cvs)
-        width_of_y = calcLengOfConv(length=492, kern_size=cvk,
+        width_of_y = calcLengOfConv(length=1231, kern_size=cvk,
                                     stride_size=cvs)
 
         self.fc1 = nn.Linear(cvo * int(width_of_x * width_of_y), 1)
         #self.fc2 = nn.Linear(120, 84)
 
-    def forward(self, x):
+    def forward(self, x, train):
         #x = self.pool(x)
         x = F.relu(self.conv1(x))
         #x = F.relu(self.conv2(x))
@@ -61,6 +64,58 @@ class Net(nn.Module):
         x = F.relu(self.fc1(x))
         #x = F.relu(self.fc2(x))
         #x = self.fc3(x)
+        return x
+
+class Rn(nn.Module):
+    def __init__(self, mpk=1, fema=3):
+        super().__init__()
+
+        self.res = resnet50()
+        #self.tra = vit_b_16(image_size=832, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
+
+        self.res.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)#nn.Conv2d(1, self.res.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.fc1 = nn.Linear(1000, 1)
+        # self.fc2 = nn.Linear(120, 84)
+
+    def forward(self, x, train):
+        # x.shape = 505 * 492
+        # x = self.pool(x)
+        if train:
+            self.res.train()
+            #self.tra.train()
+        else:
+            self.res.eval()
+            #self.tra.eval()
+
+        x = self.res(x)
+        #x = self.tra(x)
+        x = F.relu(x)
+
+        x = F.relu(self.fc1(x))
+
+        return x
+
+class Tr(nn.Module):
+    def __init__(self, mpk=1, fema=3):
+        super().__init__()
+
+        self.tra = vit_b_16(image_size=832)#, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
+        self.tra.conv_proj = torch.nn.Conv2d(1, 768, kernel_size=(16, 16), stride=(16, 16))
+
+        self.fc1 = nn.Linear(1000, 1)
+        # self.fc2 = nn.Linear(120, 84)
+
+    def forward(self, x, train):
+        if train:
+            self.tra.train()
+        else:
+            self.tra.eval()
+
+        x = self.tra(x)
+        x = F.relu(x)
+
+        x = F.relu(self.fc1(x))
+
         return x
 
 #The training function
@@ -140,7 +195,7 @@ def train_cifar(config, data_dir=None):
 
                 outputs = net(inputs)
                 total += labels.size(0)
-                correct += (abs(outputs - labels) < ERR_MARGIN).sum().item()
+                correct += (abs(outputs - labels)/labels < ERR_MARGIN).sum().item()
 
                 loss = criterion(outputs, labels)
                 val_loss += loss.cpu().numpy()
@@ -181,23 +236,22 @@ def test_accuracy(net, device="cpu"):
 
 def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
     data_dir = os.path.abspath("./data")
-    load_data()
 
     #What hyperparameter values would we like to try
     #Every time you edit this file you must edit 2 other locations
     #1. 1st line under "def train_cifar(config, data_dir=None)"
     #2. best_trained_model = Net(...
     config = {
-        # "mpk": tune.choice([2*i for i in range(1,10)]),
-        # "mps": tune.choice([2*i for i in range(1,10)]),
-        #"cvo": tune.choice([2**i for i in range(9)]),
-        #"cvk": tune.choice([2**i for i in range(9)]),
+        "mpk": tune.choice([2*i for i in range(1,10)]),
+        "mps": tune.choice([2*i for i in range(1,10)]),
+        "cvo": tune.choice([2**i for i in range(9)]),
+        "cvk": tune.choice([2**i for i in range(9)]),
 
-        #"cvs": tune.choice([2**i for i in range(9)]),
+        "cvs": tune.choice([2**i for i in range(9)]),
 
         "lr": tune.loguniform(1e-13, 1e-1), #By default has  a range of 10^3
-        #"batch_size": tune.choice([10]),
-        #"mo": tune.choice([0.1*i for i in range(10)])
+        "batch_size": tune.choice([10]),
+        "mo": tune.choice([0.1*i for i in range(10)])
     }
 
     scheduler = ASHAScheduler(
@@ -215,6 +269,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         scheduler=scheduler,
     )
 
+    embed()
     best_trial = result.get_best_trial("loss", "min", "last")
     print(f"Best trial config: {best_trial.config}")
     print(f"Best trial final validation loss: {best_trial.last_result['loss']}")
