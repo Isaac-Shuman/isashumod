@@ -23,22 +23,25 @@ def calcLengOfConv(length , kern_size, stride_size = -1):
     return floor((length - kern_size)/stride_size + 1)
 
 #Data loaders
-def load_data(rootForTrain, rootsForTest):
+def load_data(trainsets, testsets):
     rootForTrain = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader"
-    rootForTest = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/1.25ALoader"
-
+    rootsForTest = ["/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/1.25ALoader",
+                    "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/3.15ALoader",
+                    "/mnt/tmpdata/data/isashu/smallLoaders/firstSmallTestLoaders/5.45ALoader"]
 
     iiFile = "imageNameAndImage.hdf5"
     isFile = "imageNameAndSpots.csv"
     hd_filename = os.path.join(rootForTrain, iiFile)
     cs_filename = os.path.join(rootForTrain, isFile)
     trainset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+    trainsets.append(trainset)
 
-    hd_filename = os.path.join(rootForTest, iiFile)
-    cs_filename = os.path.join(rootForTest, isFile)
-    testset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+    for rootForTest in rootsForTest:
+        hd_filename = os.path.join(rootForTest, iiFile)
+        cs_filename = os.path.join(rootForTest, isFile)
+        testset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None)
+        testsets.append(testset)
 
-    return trainset, testset
 class Net(nn.Module):
     def __init__(self, mpk=2, mps=2, cvo=5, cvk=5, cvs=1):
         super(Net, self).__init__()
@@ -131,7 +134,7 @@ def train_cifar(config, data_dir=None):
     net.to(device, dtype = torch.float32) #specifying the dtype here is necessary for some reason
 
     # Define a Loss function and optimizer
-    criterion = nn.MSELoss()
+    criterion = nn.MSELoss(reduction='mean')
     #optimizer = optim.SGD(net.parameters(), lr=config["lr"], momentum=config["mo"])
     optimizer = optim.SGD(net.parameters(), lr=4.5e-11, momentum=0.2)
 
@@ -146,11 +149,15 @@ def train_cifar(config, data_dir=None):
     else:
         start_epoch = 0
 
-    trainset, testset = load_data()
+    trainsets=[]
+    testsets=[]
+    load_data(trainsets=trainsets, testsets=testsets)
+
+    trainset=trainsets[0]
 
     #Split the training data into training and validation data
     #I haven't looked at it that carefully
-    test_abs = int(len(trainset) * 0.8)
+    test_abs = int(len(trainset) * 0.5)
     train_subset, val_subset = random_split(
         trainset, [test_abs, len(trainset) - test_abs]
     )
@@ -177,7 +184,7 @@ def train_cifar(config, data_dir=None):
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            outputs = net(inputs)
+            outputs = net(inputs, train=True)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -193,7 +200,7 @@ def train_cifar(config, data_dir=None):
                 inputs, labels = data
                 inputs, labels = inputs.to(device), labels.to(device)
 
-                outputs = net(inputs)
+                outputs = net(inputs, train=False)
                 total += labels.size(0)
                 correct += (abs(outputs - labels)/labels < ERR_MARGIN).sum().item()
 
@@ -217,9 +224,7 @@ def train_cifar(config, data_dir=None):
     print("Finished Training")
 
 #test set accuracy
-def test_accuracy(net, device="cpu"):
-    trainset, testset = load_data()
-
+def test_accuracy(net, device="cpu", testset=[]):
     testloader = torch.utils.data.DataLoader(
         testset, batch_size=4, shuffle=False, num_workers=2
     )
@@ -229,7 +234,7 @@ def test_accuracy(net, device="cpu"):
     with torch.no_grad():
         for data in testloader:
             inputs, labels = data[0].to(device), data[1].to(device)
-            outputs = net(inputs)
+            outputs = net(inputs, train=False)
             total += labels.size(0)
             correct += (abs(outputs - labels) / labels < ERR_MARGIN).sum().item()
     return correct / total
@@ -289,7 +294,11 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
 
     best_trained_model.load_state_dict(best_checkpoint_data["net_state_dict"])
 
-    test_acc = test_accuracy(best_trained_model, device)
+    trainsets = []
+    testsets = []
+    load_data(trainsets=trainsets, testsets=testsets)
+    for testset in testsets:
+        test_acc = test_accuracy(net=best_trained_model, device=device, testset=testset)
     print("Best trial test set accuracy: {}".format(test_acc))
 
 
