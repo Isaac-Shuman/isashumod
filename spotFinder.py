@@ -15,7 +15,7 @@ from torch.utils.data import random_split
 from dataLoader import CustomImageDataset  # import dataloader file
 from torchvision.models import resnet50, resnet18, vit_b_16,ResNet50_Weights
 from scipy.stats import pearsonr
-
+import numpy
 
 
 #Setup for the run info files
@@ -188,6 +188,7 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
 
         ti = time.time()
         outputs = net(inputs, train=True)  # forward
+        #print(f'outputs: {outputs}')
         etime = time.time() - ti
         print('took %.4f seconds to make a prediction' % etime)
 
@@ -213,7 +214,10 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
     train_losses.append(train_loss/train_num_samp)
     etimes.append(time.time() - eb)
 
-def validate(valloader, device, net, criterion, val_losses):
+    return inputs.cpu().numpy()
+
+
+def validate(valloader, device, net, criterion, val_losses, inputs2):
     val_loss = 0
     train_num_samp = 0
 
@@ -238,10 +242,15 @@ def validate(valloader, device, net, criterion, val_losses):
             train_num_samp += len(labels)
 
     cc = pearsonr(all_labs, all_outs)[0]
+    b = torch.tensor(inputs2).to(device)
+
+    if numpy.allclose(all_outs, 0):
+        print('You failed')
+        #exit()
 
     print(f'VAL LOSS $$$: {val_loss}')
-    print(f'VAL LOSS $$$: {val_loss}')
-    embed()
+    print(f'VAL PEARSON $$$: {cc}')
+    #embed()
 
     val_losses.append(val_loss/train_num_samp)
 
@@ -253,13 +262,14 @@ def train_up_model(device, trainloader, valloader, etimes, train_losses, val_los
     #Make the network and have it utilize the gpu
     net = make_net( device=device, config=config)
     criterion = nn.MSELoss(reduction='mean')
-    optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom']) #lr=0.00000000001, momentum=0.3
+    #optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom']) #lr=0.00000000001, momentum=0.3
+    optimizer = optim.Adam(net.parameters())
 
 
     for epoch in range(config['epochs']):  # loop over the dataset multiple times
-        validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
-        descend(trainloader=trainloader, useCuda=config['useCuda'], device=device, optimizer=optimizer, net=net,
+        a = descend(trainloader=trainloader, useCuda=config['useCuda'], device=device, optimizer=optimizer, net=net,
                 criterion=criterion, train_losses=train_losses, etimes=etimes)
+        validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses, inputs2=a)
         if epoch % 5 == 0:
             save_epoch(net=net, epoch=epoch, folderName=folderName)
 
@@ -313,6 +323,8 @@ def plot_metrics(train_losses, test_losses):
 
     plt.plot(train_losses, label='train losses')
     plt.plot(test_losses, label='test losses')
+    plt.gca().set_yscale('log')
+
     plt.legend()
 
     plt.show()
@@ -385,14 +397,14 @@ def main():
     t = time.time()
     config = {
         "err_margin": 0.1,
-        "batch_size": 72,
-        "epochs": 10,
+        "batch_size": 36,
+        "epochs": 20,
         "useMultipleGPUs": False,
         "useCuda": True,
         "lm": False,
         "arc": Rn(),
-        "lr":  1e-11,
-        "mom": 0.1
+        "lr":  1e-6,
+        "mom": 0.99
     }
 
     rootForTrain = "/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTrainLoader"
