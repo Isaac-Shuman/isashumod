@@ -1,6 +1,7 @@
 #import statements
 import logging
 import os
+import random
 import time
 from math import floor
 
@@ -12,7 +13,9 @@ from IPython import embed
 from matplotlib import pylab as plt
 from torch.utils.data import random_split
 from dataLoader import CustomImageDataset  # import dataloader file
-from torchvision.models import resnet50, vit_b_16,ResNet50_Weights
+from torchvision.models import resnet50, resnet18, vit_b_16,ResNet50_Weights
+from scipy.stats import pearsonr
+
 
 
 #Setup for the run info files
@@ -46,16 +49,16 @@ def make_dataset(root):
     isFile = "imageNameAndSpots.csv"
     hd_filename = os.path.join(root, iiFile)
     cs_filename = os.path.join(root, isFile)
-    dataset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename)#, transform=transf)
+    dataset = CustomImageDataset(annotations_file=cs_filename, path_to_hdf5=hd_filename, transform=None, useSqrt=True)
 
     return dataset
 
 def make_trainValLoaders(trainset, batch_size):
     # Split the training set into 50% training and 50% validation data
-    test_abs = int(len(trainset) * 0.5)
-    generator = torch.Generator().manual_seed(2)
+    test_abs = int(len(trainset) * 0.9)
+    #generator = torch.Generator().manual_seed(2)
     train_subset, val_subset = random_split(
-        trainset, [test_abs, len(trainset) - test_abs], generator=generator
+        trainset, [test_abs, len(trainset) - test_abs]#, generator=generator
         #trainset, [144, 144], generator=generator
     )
     trainloader = torch.utils.data.DataLoader(train_subset, batch_size=batch_size,
@@ -105,7 +108,7 @@ class Rn(nn.Module):
     def __init__(self, mpk=1, fema=3):
         super().__init__()
 
-        self.res = resnet50()
+        self.res = resnet18()
         #self.tra = vit_b_16(image_size=832, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
 
         self.res.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)#nn.Conv2d(1, self.res.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
@@ -116,10 +119,10 @@ class Rn(nn.Module):
         # x.shape = 505 * 492
         # x = self.pool(x)
         if train:
-            self.res.train()
+            self.train()
             #self.tra.train()
         else:
-            self.res.eval()
+            self.eval()
             #self.tra.eval()
 
         x = self.res(x)
@@ -205,17 +208,20 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
         optimizer.step()
         etime = time.time() - ti
         print('took %.4f seconds to adjust the parameters' % etime)
-    train_losses.append(train_loss/train_num_samp)
 
+    print(f'TRAIN LOSS $$$: {train_loss}')
+    train_losses.append(train_loss/train_num_samp)
     etimes.append(time.time() - eb)
 
 def validate(valloader, device, net, criterion, val_losses):
     val_loss = 0
     train_num_samp = 0
 
+    all_labs = []
+    all_outs = []
     # ---
     with torch.no_grad():
-        for data in valloader:
+        for i, data in enumerate(valloader, 0):
             # if useCuda:
             #     inputs, labels = data[0].to(device), data[1].to(device)
             # else:
@@ -224,13 +230,20 @@ def validate(valloader, device, net, criterion, val_losses):
             # calculate outputs by running images through the network
             outputs = net(inputs, train=False)
 
+            all_labs += [l.item() for l in labels]
+            all_outs += [o.item() for o in outputs]
+
             loss_as_ten = criterion(outputs, labels)
             val_loss += loss_as_ten.item()  # compute the loss
             train_num_samp += len(labels)
-    # ----
-    #embed()
-    val_losses.append(val_loss/train_num_samp)
 
+    cc = pearsonr(all_labs, all_outs)[0]
+
+    print(f'VAL LOSS $$$: {val_loss}')
+    print(f'VAL LOSS $$$: {val_loss}')
+    embed()
+
+    val_losses.append(val_loss/train_num_samp)
 
 def save_epoch(net, epoch, folderName):
     pathToModel = os.path.join(folderName, 'modelE'+str(epoch)+'.pth')
@@ -247,7 +260,8 @@ def train_up_model(device, trainloader, valloader, etimes, train_losses, val_los
         validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
         descend(trainloader=trainloader, useCuda=config['useCuda'], device=device, optimizer=optimizer, net=net,
                 criterion=criterion, train_losses=train_losses, etimes=etimes)
-        #save_epoch(net=net, epoch=epoch, folderName=folderName)
+        if epoch % 5 == 0:
+            save_epoch(net=net, epoch=epoch, folderName=folderName)
 
     print('Finished Training')
     return net
@@ -268,7 +282,7 @@ def test(testloader, device, net, config):
             total += labels.size(0)
             correct += (abs(outputs - labels) / labels < config['err_margin']).sum().item()
     return correct/total
-def save_run(net, train_losses, etimes, val_losses, accuracies, rootForTrain, rootForTest, folderName, config):
+def save_run(net, train_losses, etimes, val_losses, accuracies, rootForTrain, rootForTest, folderName, config, timetorun):
     #Log the statistics of the run and save the model
     log_filename = os.path.join(folderName, 'metrics.log')
     pathToModel = os.path.join(folderName, 'modelFinal.pth')
@@ -283,6 +297,7 @@ def save_run(net, train_losses, etimes, val_losses, accuracies, rootForTrain, ro
     logging.info(f'Training losses:{train_losses}')
     logging.info(f'Validation losses losses: {val_losses}')
     logging.info(f'Final accuracies: {accuracies}')
+    logging.info(f'Total runtime: {timetorun}')
 
 
 def plot_metrics(train_losses, test_losses):
@@ -306,25 +321,84 @@ def loadModel(pathToModel):
     net = Net()
     net.load_state_dict(torch.load(pathToModel))
     return net
+
+def verifyLoaders():
+    config = {
+        "err_margin": 0.1,
+        "batch_size": 10,
+        "epochs": 500,
+        "useMultipleGPUs": False,
+        "useCuda": True,
+        "lm": False,
+        "arc": Rn(),
+        "lr": 1e-11,
+        "mom": 0.1
+    }
+    device = 'cuda:0'
+    rootForTrain = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader"
+
+    trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+
+    net = make_net(device=device, config=config)
+    criterion = nn.MSELoss(reduction='mean')
+    #optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom'])  # lr=0.00000000001, momentum=0.3
+
+    sum = 0
+    i = 0
+    for data in valloader:
+        if i == 0:
+            inputs, labels = data[0].to(device), data[1].to(device)
+            outputs = net(inputs, train=False)
+            print(outputs)
+            print(labels)
+        i+=1
+        loss = criterion(outputs, labels)
+    embed()
+    i = 0
+    for data in valloader:
+        if i == 0:
+            inputs, labels = data[0].to(device), data[1].to(device)
+            outputs = net(inputs, train=False)
+            print(outputs)
+            print(labels)
+        i+=1
+
+    print(f'Sum of labels {sum}')
+
+
+    #validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
+
+
+def gen_hp():
+    epoch = 10 * random.randint(5, 500) #50-5000 epochs
+    mom = random.random() #0-1
+    lr = 10 ** (-random.randint(1,15)) #10
+
+    hp = {
+        'epoch': epoch,
+        'mom': mom,
+        'lr': 2,
+        'batch_size': 3
+    }
 def main():
 
     t = time.time()
     config = {
         "err_margin": 0.1,
-        "batch_size": 1,
+        "batch_size": 72,
         "epochs": 10,
         "useMultipleGPUs": False,
         "useCuda": True,
         "lm": False,
-        "arc": Net(),
-        "lr":  1e-5,
+        "arc": Rn(),
+        "lr":  1e-11,
         "mom": 0.1
     }
 
-    rootForTrain = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader"
-    rootsForTest = ["/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/1.25ALoader",
-                    "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/3.15ALoader",
-                    "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTestLoaders/5.45ALoader"]
+    rootForTrain = "/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTrainLoader"
+    rootsForTest = ["/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTestLoaders/1.25ALoader",
+                    "/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTestLoaders/3.15ALoader",
+                    "/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTestLoaders/5.45ALoader"]
 
     folderName=getInfoFolder()
 
@@ -335,8 +409,8 @@ def main():
     testloaders = []
     for rootForTest in rootsForTest:
         testloaders.append(make_testloader(make_dataset(root=rootForTest), batch_size=config['batch_size']))
-    testloaders= [] #Temp
 
+    print(f'Trainloader length: {len(trainloader)}')
     etimes = []
     train_losses = []
     val_losses = []
@@ -369,6 +443,7 @@ def main():
         )
         accuracies.append(accuracy)
 
+    timetorun=time.time()-t
 
     save_run(
         net=net,
@@ -379,10 +454,13 @@ def main():
         rootForTrain=rootForTrain,
         rootForTest=rootsForTest,
         folderName=folderName,
-        config=config
+        config=config,
+        timetorun=timetorun
     )
+    print(f'Time to run is {timetorun}')
     plot_metrics(train_losses=train_losses, test_losses=val_losses)
     print(f'Accuracies are {accuracies}')
-    print(f'Time to run is {time.time()-t}')
 if __name__ == "__main__":
+    #verifyLoaders()
     main()
+

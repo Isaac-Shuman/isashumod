@@ -22,7 +22,7 @@ raw_directories = ['1.42ADump', '1.450ADump', '1.45ADump', '1.50ADump', '1.60ADu
                    '1.66ADump', '1.70ADump', '1.72ADump', '1.74ADump', '1.76ADump', '1.81ADump',
                    '1.85ADump', '1.8ADump', '1.95ADump', '2.0ADump', '2.5ADump', '2.80ADump', '2.85ADump', '2.90ADump', '5.40ADump']
 
-pro_big_dir = '/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader'
+pro_big_dir = '/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTrainLoader'
 
 #make everything go in the for loop and delete the current pro_dir
 ini = time.time()
@@ -36,7 +36,7 @@ cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
 
 hd = h5py.File(hd_filename, "w-") #The w- should cause this command to fail if the file already exists
 
-cond_meth_name = "resize_alpha"
+cond_meth_name = "resize_beta"
 cond_meth = getattr(condition, cond_meth_name)()
 
 cs = open(cs_filename, 'w')
@@ -47,7 +47,7 @@ for di in raw_directories: #for direct in raw_directiories
     # generate the path...
     raw_dir = os.path.join(raw_big_dir, di)  # 1.for the raw directory
     num_files = len(os.listdir(raw_dir))
-    per_files = 0.01
+    per_files = 0.07
     firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
     i = 0
