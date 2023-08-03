@@ -17,12 +17,13 @@ annotations_file should be the full path of the csv file with rows [image name, 
 #LAL = 1 #Use 1/LAL of the dataset
 class CustomImageDataset(Dataset):
 
-    def __init__(self, annotations_file, path_to_hdf5, transform=None, target_transform=None, test=False):
+    def __init__(self, annotations_file, path_to_hdf5, transform=None, target_transform=None, test=False, useSqrt=False):
         self.img_labels = pd.read_csv(annotations_file)
         self.path_to_hdf5 = path_to_hdf5
         self.transform = transform
         self.target_transform = target_transform
         self.test = test
+        self.useSqrt = useSqrt
 
     def __len__(self):
         return len(self.img_labels)#//LAL
@@ -35,17 +36,21 @@ class CustomImageDataset(Dataset):
          #   idx_offset += 300
         with h5py.File(self.path_to_hdf5, 'r') as f:
             image = f[self.img_labels.iloc[idx + idx_offset, 0]][()]
+
             #image = torch.zeros(size=(1, 1263, 1231), dtype=torch.float32) #Used for transform to test having 832*832
         #get the number of spots
         label = self.img_labels.iloc[idx + idx_offset, 1]
         #label = torch.from_numpy(label)
         label = torch.tensor([label]).type(torch.float32) #label transformation
 
+        lt = 0
+        # up = 20000  # the upper threshold is actually this value + 60
+        image[image < lt] = lt
+
+        if self.useSqrt:
+            image = numpy.sqrt(image)
         #stuff
-        if self.transform:
-            lt = 0
-            # up = 20000  # the upper threshold is actually this value + 60
-            # image[image < lt] = lt
+        #if self.transform:
             # image = torch.tensor(image)
             # #image[image > up] = up
 

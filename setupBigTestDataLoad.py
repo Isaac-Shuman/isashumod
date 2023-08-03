@@ -20,7 +20,7 @@ This script creates:
 # 1. Change the directory
 raw_big_dir = '/mnt/tmpdata/data/isashu/exptFileDumps'
 raw_directories = ['1.25ADump', '3.15ADump', '5.45ADump']
-pro_big_dir = '/mnt/tmpdata/data/isashu/bigLoaders/firstBigTestLoaders'
+pro_big_dir = '/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTestLoaders'
 
 cond_meth_name = "resize_beta"
 cond_meth = getattr(condition, cond_meth_name)()
@@ -39,7 +39,7 @@ for di in raw_directories: #for direct in raw_directiories
     writer = csv.writer(cs)
 
     num_files = len(os.listdir(raw_dir))
-    per_files = 1
+    per_files = 0.07
     firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
     i = 0
