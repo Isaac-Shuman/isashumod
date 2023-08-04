@@ -43,9 +43,9 @@ class CustomImageDataset(Dataset):
         #label = torch.from_numpy(label)
         label = torch.tensor([label]).type(torch.float32) #label transformation
 
-        lt = 0
-        # up = 20000  # the upper threshold is actually this value + 60
-        image[image < lt] = lt
+        # lt = 0
+        # # up = 20000  # the upper threshold is actually this value + 60
+        # image[image < lt] = lt
 
         if self.useSqrt:
             image = numpy.sqrt(image)
