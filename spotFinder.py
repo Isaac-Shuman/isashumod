@@ -479,6 +479,11 @@ def main(num=18, lr=1e-7, optim=0, mom=0.99):
 
     log_filename = os.path.join(folderName, 'training.log')
     setup_logger(log_filename) #main could be replaced with anything
+    logger = logging.getLogger('main')
+    logger.info(f'num is {num}')
+    logger.info(f'{lr}')
+    logger.info(f'{optim}')
+    logger.info(f'{mom}')
 
     # use the gpu
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
@@ -552,9 +557,9 @@ def main(num=18, lr=1e-7, optim=0, mom=0.99):
         timetorun=timetorun
     )
     print(f'Time to run is {timetorun}')
-    plot_metrics(train_losses=train_losses, val_losses=val_losses,
-                 train_accuracies=train_accuracies, val_accuracies=val_accuracies,
-                 train_pearsons = train_pearsons, val_pearsons = val_pearsons)
+    # plot_metrics(train_losses=train_losses, val_losses=val_losses,
+    #              train_accuracies=train_accuracies, val_accuracies=val_accuracies,
+    #              train_pearsons = train_pearsons, val_pearsons = val_pearsons)
     print(f'Accuracies are {final_accuracies}')
 if __name__ == "__main__":
     #verifyLoaders()
