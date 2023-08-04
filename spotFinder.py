@@ -12,15 +12,27 @@ import torch.optim as optim
 from IPython import embed
 from matplotlib import pylab as plt
 from torch.utils.data import random_split
-from dataLoader import CustomImageDataset  # import dataloader file
-from torchvision.models import resnet50, resnet18, vit_b_16,ResNet50_Weights
+from isashumod.dataLoader import CustomImageDataset  # import dataloader file
+from torchvision.models import resnet50, resnet34, resnet18, vit_b_16,ResNet50_Weights
 from scipy.stats import pearsonr
 import numpy
 
 
 #Setup for the run info files
+
+def setup_logger(filename):
+    format = '%(asctime)s >> %(message)s'
+    logger = logging.getLogger('main')
+    handler = logging.FileHandler(filename)
+    logger.addHandler(handler)
+    logger.propagate = True
+
+    console = logging.StreamHandler()
+    console.setFormatter(logging.Formatter(format))
+    logger.addHandler(console)
+    logger.setLevel(20)
 def getInfoFolder():
-    rootFolderName = '/mnt/tmpdata/data/isashu/runFolders'
+    rootFolderName = '/mnt/tmpdata/data/isashu/overnightRuns'
     folderName = os.path.join(rootFolderName, str(time.strftime('run_%Y-%m-%d_%H_%M_%S')))
     os.mkdir(folderName)
 
@@ -105,10 +117,15 @@ class Net(nn.Module):
         return x
 
 class Rn(nn.Module):
-    def __init__(self, mpk=1, fema=3):
+    def __init__(self, num=18, mpk=1, fema=3):
         super().__init__()
 
-        self.res = resnet18()
+        if num==18:
+            self.res = resnet18()
+        if num==34:
+            self.res = resnet34()
+        if num == 50:
+            self.res = resnet50()
         #self.tra = vit_b_16(image_size=832, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
 
         self.res.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)#nn.Conv2d(1, self.res.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
@@ -158,7 +175,7 @@ class Tr(nn.Module):
 def make_net(device, config):
     # Make the network and have it utilize the gpu
 
-    net = config['arc']
+    net = config['arc'] #Rn() Tr(),
     # decide what resources the model will use
     if (torch.cuda.device_count() > 1) and config['useMultipleGPUs']:
         print(f"Let's use {torch.cuda.device_count()} GPUs!")
@@ -167,10 +184,15 @@ def make_net(device, config):
         net.to(device, dtype=torch.float32)
     return net
 
-def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losses, etimes):
+def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losses, train_accuracies, pearsons, err_margin=0.1, etimes=[]):
+    logger = logging.getLogger('main')
     train_loss = 0
     train_num_samp = 0
     t= 0
+    total = 0
+    correct = 0
+    all_labs = []
+    all_outs = []
     eb = time.time()
     for i, data in enumerate(trainloader, 0):
         t = time.time()
@@ -210,17 +232,36 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
         etime = time.time() - ti
         print('took %.4f seconds to adjust the parameters' % etime)
 
-    print(f'TRAIN LOSS $$$: {train_loss}')
+        #take the accuracy
+        total += labels.size(0)
+        correct += (abs(outputs - labels)/labels < err_margin).sum().item()
+
+        #for the pearson cc
+        all_labs += [l.item() for l in labels]
+        all_outs += [o.item() for o in outputs]
+
+    cc = pearsonr(all_labs, all_outs)[0]
+
+    logger.info(f'TRAIN LOSS $$$: {train_loss}')
+    logger.info(f'TRAIN ACCURACIES $$$: {correct/total}')
+    logger.info(f'TRAIN PEARSON $$$: {cc}')
+
     train_losses.append(train_loss/train_num_samp)
+    train_accuracies.append(correct/total)
     etimes.append(time.time() - eb)
+
+    pearsons.append(cc)
 
     return inputs.cpu().numpy()
 
 
-def validate(valloader, device, net, criterion, val_losses, inputs2):
+def validate(valloader, device, net, criterion, val_losses, val_accuracies, pearsons, err_margin=0.1, inputs2=None):
+    logger = logging.getLogger('main')
     val_loss = 0
     train_num_samp = 0
 
+    total = 0
+    correct = 0
     all_labs = []
     all_outs = []
     # ---
@@ -234,22 +275,31 @@ def validate(valloader, device, net, criterion, val_losses, inputs2):
             # calculate outputs by running images through the network
             outputs = net(inputs, train=False)
 
+            #for the pearson cc
             all_labs += [l.item() for l in labels]
             all_outs += [o.item() for o in outputs]
 
+            #for the loss
             loss_as_ten = criterion(outputs, labels)
             val_loss += loss_as_ten.item()  # compute the loss
             train_num_samp += len(labels)
 
+            # take the accuracy
+            total += labels.size(0)
+            correct += (abs(outputs - labels)/labels < err_margin).sum().item()
+
     cc = pearsonr(all_labs, all_outs)[0]
     b = torch.tensor(inputs2).to(device)
 
+    val_accuracies.append(correct/total)
+    pearsons.append(cc)
+
     if numpy.allclose(all_outs, 0):
         print('You failed')
-        #exit()
 
-    print(f'VAL LOSS $$$: {val_loss}')
-    print(f'VAL PEARSON $$$: {cc}')
+    logger.info(f'VAL LOSS $$$: {val_loss}')
+    logger.info(f'VAL ACCURACIES $$$: {correct/total}')
+    logger.info(f'VAL PEARSON $$$: {cc}')
     #embed()
 
     val_losses.append(val_loss/train_num_samp)
@@ -258,18 +308,23 @@ def save_epoch(net, epoch, folderName):
     pathToModel = os.path.join(folderName, 'modelE'+str(epoch)+'.pth')
     torch.save(net.state_dict(), pathToModel)
 
-def train_up_model(device, trainloader, valloader, etimes, train_losses, val_losses, folderName, config):
+def train_up_model(device, trainloader, valloader, etimes, train_losses, val_losses, train_accuracies, val_accuracies,
+                   train_pearsons, val_pearsons, folderName, config):
     #Make the network and have it utilize the gpu
     net = make_net( device=device, config=config)
     criterion = nn.MSELoss(reduction='mean')
-    #optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom']) #lr=0.00000000001, momentum=0.3
-    optimizer = optim.Adam(net.parameters())
+    if config['optim'] == 0:
+        optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom']) #lr=0.00000000001, momentum=0.3
+    elif config['optim'] == 1:
+        optimizer = optim.Adam(net.parameters(), lr=config['lr'])
 
 
     for epoch in range(config['epochs']):  # loop over the dataset multiple times
         a = descend(trainloader=trainloader, useCuda=config['useCuda'], device=device, optimizer=optimizer, net=net,
-                criterion=criterion, train_losses=train_losses, etimes=etimes)
-        validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses, inputs2=a)
+                    criterion=criterion, train_losses=train_losses, train_accuracies=train_accuracies,
+                    pearsons=train_pearsons, err_margin=config['err_margin'], etimes=etimes)
+        validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses,
+                 val_accuracies=val_accuracies, err_margin=config['err_margin'], pearsons=val_pearsons, inputs2=a)
         if epoch % 5 == 0:
             save_epoch(net=net, epoch=epoch, folderName=folderName)
 
@@ -292,7 +347,9 @@ def test(testloader, device, net, config):
             total += labels.size(0)
             correct += (abs(outputs - labels) / labels < config['err_margin']).sum().item()
     return correct/total
-def save_run(net, train_losses, etimes, val_losses, accuracies, rootForTrain, rootForTest, folderName, config, timetorun):
+def save_run(net, train_losses, train_accuracies, train_pearsons, etimes, val_losses,
+             val_accuracies, val_pearsons, final_accuracies, rootForTrain, rootForTest,
+             folderName, config, timetorun):
     #Log the statistics of the run and save the model
     log_filename = os.path.join(folderName, 'metrics.log')
     pathToModel = os.path.join(folderName, 'modelFinal.pth')
@@ -305,12 +362,16 @@ def save_run(net, train_losses, etimes, val_losses, accuracies, rootForTrain, ro
     logging.info(f'rootForTest: {rootForTest}')
     logging.info(f'Epoch run times: {etimes}')
     logging.info(f'Training losses:{train_losses}')
+    logging.info(f'Training accuracies:{train_accuracies}')
+    logging.info(f'Training pearson ccs: {train_pearsons}')
     logging.info(f'Validation losses losses: {val_losses}')
-    logging.info(f'Final accuracies: {accuracies}')
+    logging.info(f'Validation accuracies:{val_accuracies}')
+    logging.info(f'Validation pearson ccs: {val_pearsons}')
+    logging.info(f'Final accuracies: {final_accuracies}')
     logging.info(f'Total runtime: {timetorun}')
 
 
-def plot_metrics(train_losses, test_losses):
+def plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, train_pearsons, val_pearsons):
     # show the costs over time
     # x = range(len(training_losses))
     # y = training_losses
@@ -320,12 +381,21 @@ def plot_metrics(train_losses, test_losses):
     # a = range(len(test_losses))
     # ax2.plot(a, test_losses)
     # ax2.plot(a, contr_losses)
+    fig, axes = plt.subplots(2, 2)
 
-    plt.plot(train_losses, label='train losses')
-    plt.plot(test_losses, label='test losses')
-    plt.gca().set_yscale('log')
+    axes[0, 0].plot(train_losses, label='train losses')
+    axes[0, 0].plot(val_losses, label='val losses')
 
-    plt.legend()
+    axes[0, 1].plot(train_accuracies, label='train accuracies')
+    axes[0, 1].plot(val_accuracies, label='val accuracies')
+
+    axes[1, 0].plot(train_pearsons, label='train pearsons')
+    axes[1, 0].plot(val_pearsons, label='val pearsons')
+
+    axes[0, 0].set_yscale('log')
+    axes[0, 0].legend()
+    axes[0, 1].legend()
+    axes[1, 0].legend()
 
     plt.show()
 
@@ -381,43 +451,43 @@ def verifyLoaders():
     #validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
 
 
-def gen_hp():
-    epoch = 10 * random.randint(5, 500) #50-5000 epochs
-    mom = random.random() #0-1
-    lr = 10 ** (-random.randint(1,15)) #10
-
-    hp = {
-        'epoch': epoch,
-        'mom': mom,
-        'lr': 2,
-        'batch_size': 3
-    }
-def main():
+def main(num=18, lr=1e-7, optim=0, mom=0.99):
 
     t = time.time()
     config = {
-        "err_margin": 0.1,
+        "err_margin": 0.20,
         "batch_size": 36,
-        "epochs": 20,
+        "epochs": 30,
         "useMultipleGPUs": False,
         "useCuda": True,
         "lm": False,
-        "arc": Rn(),
-        "lr":  1e-6,
-        "mom": 0.99
+        "arc": Rn(num=num),
+        "lr":  lr,
+        "mom": mom,
+        "optim": optim,
     }
 
-    rootForTrain = "/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTrainLoader"
-    rootsForTest = ["/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTestLoaders/1.25ALoader",
-                    "/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTestLoaders/3.15ALoader",
-                    "/mnt/tmpdata/data/isashu/threeByThree/smallerLoaders/smallTestLoaders/5.45ALoader"]
+    rootForTrain = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/trainLoader"
+    rootForVal = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/valLoader"
+
+    rootsForTest = ["/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/testLoaders/1.25ALoader",
+                    "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/testLoaders/3.15ALoader",
+                    "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/testLoaders/5.45ALoader"]
 
     folderName=getInfoFolder()
+
+
+    log_filename = os.path.join(folderName, 'training.log')
+    setup_logger(log_filename) #main could be replaced with anything
 
     # use the gpu
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+
+    #trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+    trainloader = make_testloader(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+    valloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
+
     testloaders = []
     for rootForTest in rootsForTest:
         testloaders.append(make_testloader(make_dataset(root=rootForTest), batch_size=config['batch_size']))
@@ -426,6 +496,10 @@ def main():
     etimes = []
     train_losses = []
     val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+    train_pearsons = []
+    val_pearsons = []
     if not config['lm']:
         net = train_up_model(
             device=device,
@@ -434,8 +508,12 @@ def main():
             etimes=etimes,
             train_losses=train_losses,
             val_losses=val_losses,
+            train_accuracies=train_accuracies,
+            val_accuracies=val_accuracies,
+            train_pearsons=train_pearsons,
+            val_pearsons=val_pearsons,
             folderName=folderName,
-            config=config
+            config=config,
         )
     else:
         net = loadModel("/mnt/tmpdata/data/isashu/runFolders/run_2023-08-STUFF.pth") #Current network must match loaded network
@@ -445,7 +523,7 @@ def main():
         if config['useCuda']:
             net.to(device, dtype=torch.float32)
 
-    accuracies = []
+    final_accuracies = []
     for testloader in testloaders:
         accuracy = test(
             testloader=testloader,
@@ -453,7 +531,7 @@ def main():
             net=net,
             config=config
         )
-        accuracies.append(accuracy)
+        final_accuracies.append(accuracy)
 
     timetorun=time.time()-t
 
@@ -462,7 +540,11 @@ def main():
         train_losses=train_losses,
         etimes=etimes,
         val_losses=val_losses,
-        accuracies=accuracies,
+        train_accuracies=train_accuracies,
+        val_accuracies=val_accuracies,
+        final_accuracies=final_accuracies,
+        train_pearsons=train_pearsons,
+        val_pearsons=val_pearsons,
         rootForTrain=rootForTrain,
         rootForTest=rootsForTest,
         folderName=folderName,
@@ -470,8 +552,10 @@ def main():
         timetorun=timetorun
     )
     print(f'Time to run is {timetorun}')
-    plot_metrics(train_losses=train_losses, test_losses=val_losses)
-    print(f'Accuracies are {accuracies}')
+    plot_metrics(train_losses=train_losses, val_losses=val_losses,
+                 train_accuracies=train_accuracies, val_accuracies=val_accuracies,
+                 train_pearsons = train_pearsons, val_pearsons = val_pearsons)
+    print(f'Accuracies are {final_accuracies}')
 if __name__ == "__main__":
     #verifyLoaders()
     main()

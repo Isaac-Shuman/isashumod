@@ -27,6 +27,9 @@ def resize_alpha():
 def resize_beta():
     return torchvision.transforms.Resize((842, 821))
 
+def resize_for_trans():
+    return torchvision.transforms.Resize((832, 832))
+
 
 
 
