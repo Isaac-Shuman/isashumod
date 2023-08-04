@@ -31,8 +31,11 @@ def setup_logger(filename):
     console.setFormatter(logging.Formatter(format))
     logger.addHandler(console)
     logger.setLevel(20)
-def getInfoFolder():
-    rootFolderName = '/mnt/tmpdata/data/isashu/overnightRuns'
+
+def getInfoFolder(config):
+    rootFolderName = config["rootDir"]
+    if not os.path.exists(rootFolderName):
+        os.makedirs(rootFolderName)
     folderName = os.path.join(rootFolderName, str(time.strftime('run_%Y-%m-%d_%H_%M_%S')))
     os.mkdir(folderName)
 
@@ -117,8 +120,10 @@ class Net(nn.Module):
         return x
 
 class Rn(nn.Module):
-    def __init__(self, num=18, mpk=1, fema=3):
+    def __init__(self, num=18, mpk=1, fema=3, two_fc_mode=False):
         super().__init__()
+
+        self.two_fc_mode = two_fc_mode
 
         if num==18:
             self.res = resnet18()
@@ -129,7 +134,9 @@ class Rn(nn.Module):
         #self.tra = vit_b_16(image_size=832, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
 
         self.res.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)#nn.Conv2d(1, self.res.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-        self.fc1 = nn.Linear(1000, 1)
+        self.fc_1000_to_100 = nn.Linear(1000, 100)
+        self.fc_100_to_1 = nn.Linear(100, 1)
+        self.fc_1000_to_1 = nn.Linear(1000, 1)
         # self.fc2 = nn.Linear(120, 84)
 
     def forward(self, x, train):
@@ -143,10 +150,14 @@ class Rn(nn.Module):
             #self.tra.eval()
 
         x = self.res(x)
-        #x = self.tra(x)
         x = F.relu(x)
 
-        x = F.relu(self.fc1(x))
+        if self.two_fc_mode:
+            x = self.fc_1000_to_100(x)
+            x = F.relu(x)
+            x = self.fc_100_to_1(x)
+        else:
+            x = self.fc_1000_to_1(x)
 
         return x
 
@@ -319,7 +330,8 @@ def train_up_model(device, trainloader, valloader, etimes, train_losses, val_los
         optimizer = optim.Adam(net.parameters(), lr=config['lr'])
 
 
-    for epoch in range(config['epochs']):  # loop over the dataset multiple times
+    for i_epoch, epoch in enumerate(range(config['epochs'])):  # loop over the dataset multiple times
+        print(f"Beginning Epoch {i_epoch+1} / {config['epochs']}")
         a = descend(trainloader=trainloader, useCuda=config['useCuda'], device=device, optimizer=optimizer, net=net,
                     criterion=criterion, train_losses=train_losses, train_accuracies=train_accuracies,
                     pearsons=train_pearsons, err_margin=config['err_margin'], etimes=etimes)
@@ -451,45 +463,55 @@ def verifyLoaders():
     #validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
 
 
-def main(num=18, lr=1e-7, optim=0, mom=0.99):
+def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30,
+        two_fc_mode=False):
 
     t = time.time()
     config = {
         "err_margin": 0.20,
-        "batch_size": 36,
-        "epochs": 100,
+        "batch_size": 64,
+        "epochs": epochs,
         "useMultipleGPUs": False,
         "useCuda": True,
         "lm": False,
-        "arc": Rn(num=num),
+        "arc": Rn(num=num, two_fc_mode=two_fc_mode),
         "lr":  lr,
         "mom": mom,
         "optim": optim,
+        "rootDir": rootDir,
     }
 
-    rootForTrain = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/trainLoader"
-    rootForVal = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/valLoader"
+    rootForTrain = os.path.join( loaderRoot, "trainLoader")
+    rootForVal = os.path.join(loaderRoot, "valLoader")
+    rootForTest = os.path.join(loaderRoot, "testLoaders")
 
-    rootsForTest = ["/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/testLoaders/1.25ALoader",
-                    "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/testLoaders/3.15ALoader",
-                    "/mnt/tmpdata/data/isashu/newLoaders/threeDown/bigLoaders/testLoaders/5.45ALoader"]
+    rootsForTest = ["1.25ALoader",
+                    "3.15ALoader",
+                    "5.45ALoader"]
+    rootsForTest = [os.path.join(rootForTest, dname) for dname in rootsForTest]
+    
+    for dirname in [rootForTrain, rootForVal, rootForTest] + rootsForTest:
+        if not os.path.exists(dirname):
+            raise OSError("%s does not exist!" % dirname)
 
-    folderName=getInfoFolder()
-
+    # the main output folder:
+    folderName = getInfoFolder(config)
 
     log_filename = os.path.join(folderName, 'training.log')
     setup_logger(log_filename) #main could be replaced with anything
     logger = logging.getLogger('main')
+    logger.info(f'train files in {rootForTrain}')
+    logger.info(f'validation files in {rootForVal}')
+    logger.info(f'test files in {rootForTest}')
     logger.info(f'num is {num}')
-    logger.info(f'{lr}')
-    logger.info(f'{optim}')
-    logger.info(f'{mom}')
+    logger.info(f'lr is {lr}')
+    logger.info(f'optim is {optim}')
+    logger.info(f'momentum is {mom}')
+    logger.info(f'two_fc_mode is {two_fc_mode}')
 
     # use the gpu
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-
-    #trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
     trainloader = make_testloader(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
     valloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
 
@@ -563,5 +585,8 @@ def main(num=18, lr=1e-7, optim=0, mom=0.99):
     print(f'Accuracies are {final_accuracies}')
 if __name__ == "__main__":
     #verifyLoaders()
-    main()
+
+    rootDir='/mnt/tmpdata/data/isashu/overnightRuns'
+    loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/smallLoaders/"
+    main(rootDir, loaderRoot)
 
