@@ -23,9 +23,13 @@ import numpy
 def setup_logger(filename):
     format = '%(asctime)s >> %(message)s'
     logger = logging.getLogger('main')
+
+    if (logger.hasHandlers()):
+        logger.handlers.clear()
+
     handler = logging.FileHandler(filename)
     logger.addHandler(handler)
-    logger.propagate = True
+    logger.propagate = False
 
     console = logging.StreamHandler()
     console.setFormatter(logging.Formatter(format))
@@ -195,7 +199,7 @@ def make_net(device, config):
         net.to(device, dtype=torch.float32)
     return net
 
-def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losses, train_accuracies, pearsons, err_margin=0.1, etimes=[]):
+def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losses, train_accuracies, pearsons, err_margin=0.1, etimes=[], track_times=False):
     logger = logging.getLogger('main')
     train_loss = 0
     train_num_samp = 0
@@ -205,25 +209,29 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
     all_labs = []
     all_outs = []
     eb = time.time()
-    for i, data in enumerate(trainloader, 0):
+    num_batch = len(trainloader)
+    for i_batch, data in enumerate(trainloader, 0):
         t = time.time()
         # get the inputs; data is a list of [inputs, labels]
         inputs, labels = data[0].to(device), data[1].to(device)
 
         etime = time.time() - t
-        print('took %.4f seconds to separate the tuple "data"' % etime)
+        if track_times:
+            print('took %.4f seconds to separate the tuple "data"' % etime)
 
         # zero the parameter gradients
         ti = time.time()
         optimizer.zero_grad()
         etime = time.time() - ti
-        print('took %.4f seconds to zero the gradients' % etime)
+        if track_times:
+            print('took %.4f seconds to zero the gradients' % etime)
 
         ti = time.time()
         outputs = net(inputs, train=True)  # forward
         #print(f'outputs: {outputs}')
         etime = time.time() - ti
-        print('took %.4f seconds to make a prediction' % etime)
+        if track_times:
+            print('took %.4f seconds to make a prediction' % etime)
 
         ti = time.time()
         loss = criterion(outputs, labels)  # compute the loss
@@ -231,17 +239,20 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
         train_num_samp += len(labels)
 
         etime = time.time() - ti
-        print('took %.4f seconds to compute the loss' % etime)
+        if track_times:
+            print('took %.4f seconds to compute the loss' % etime)
 
         ti = time.time()
         loss.backward()  # propogate the error backwards
         etime = time.time() - ti
-        print('took %.4f seconds to propagate the loss backwards' % etime)
+        if track_times:
+            print('took %.4f seconds to propagate the loss backwards' % etime)
 
         ti = time.time()
         optimizer.step()
         etime = time.time() - ti
-        print('took %.4f seconds to adjust the parameters' % etime)
+        if track_times:
+            print('took %.4f seconds to adjust the parameters' % etime)
 
         #take the accuracy
         total += labels.size(0)
@@ -250,6 +261,8 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
         #for the pearson cc
         all_labs += [l.item() for l in labels]
         all_outs += [o.item() for o in outputs]
+        
+        print(f"Finished batch {i_batch+1}/{num_batch}. Seen {total} examples.")
 
     cc = pearsonr(all_labs, all_outs)[0]
 
