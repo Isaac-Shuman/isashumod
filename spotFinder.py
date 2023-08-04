@@ -457,7 +457,7 @@ def main(num=18, lr=1e-7, optim=0, mom=0.99):
     config = {
         "err_margin": 0.20,
         "batch_size": 36,
-        "epochs": 30,
+        "epochs": 100,
         "useMultipleGPUs": False,
         "useCuda": True,
         "lm": False,
