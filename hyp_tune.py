@@ -2,6 +2,7 @@ from isashumod import spotFinder
 import random
 import numpy as np
 import sys
+import time
 
 
 outdir = sys.argv[1]
@@ -34,3 +35,5 @@ while True:
     except Exception as err:
         print(str(err))
         pass
+    print("waiting 10 sec for GPU to clear... ") 
+    time.sleep(10)
