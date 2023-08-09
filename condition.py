@@ -30,6 +30,12 @@ def resize_beta():
 def resize_for_trans():
     return torchvision.transforms.Resize((832, 832))
 
-
+def mx_gamma():
+    #try ZeroPad2d
+    tran = torchvision.transforms.Compose([
+        torch.nn.MaxPool2d(3, stride=3),  # outputs image of size (842, 821)
+        torchvision.transforms.CenterCrop(832)
+    ])
+    return tran
 
 
