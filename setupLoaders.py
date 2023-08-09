@@ -139,7 +139,7 @@ def setupTestLoaders(raw_big_dir, raw_directories, pro_big_dir, per_files, cond_
 
 
 def main():
-    new_loaders = 'threeDown'
+    new_loaders = 'threeMax'
     all_loaders = '/mnt/tmpdata/data/isashu/newLoaders'
     big_dir = os.path.join(all_loaders, new_loaders)
     os.mkdir(big_dir)
@@ -154,7 +154,7 @@ def main():
                        '2.90ADump', '5.40ADump']
     raw_test_directories = ['1.25ADump', '3.15ADump', '5.45ADump']
 
-    cond_meth_name = "resize_for_trans"
+    cond_meth_name = "mx_gamma"
 
     i = 0
     for size in loaderSizes:

@@ -13,9 +13,11 @@ from IPython import embed
 from matplotlib import pylab as plt
 from torch.utils.data import random_split
 from isashumod.dataLoader import CustomImageDataset  # import dataloader file
-from torchvision.models import resnet50, resnet34, resnet18, vit_b_16,ResNet50_Weights
+from torchvision.models import resnet50, resnet34, resnet18, vit_b_16, vit_b_32, ResNet50_Weights
 from scipy.stats import pearsonr
 import numpy
+
+#2527, 2463
 
 
 #Setup for the run info files
@@ -166,25 +168,30 @@ class Rn(nn.Module):
         return x
 
 class Tr(nn.Module):
-    def __init__(self, mpk=1, fema=3):
+    def __init__(self, mpk=1, fema=3, num=16):
         super().__init__()
 
-        self.tra = vit_b_16(image_size=832)#, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
-        self.tra.conv_proj = torch.nn.Conv2d(1, 768, kernel_size=(16, 16), stride=(16, 16))
+        if num == 16:
+            self.tra = vit_b_16(image_size=832)#, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
+        if num == 32:
+            self.tra = vit_b_32(image_size=832)
+        self.tra.conv_proj = torch.nn.Conv2d(1, 768, kernel_size=(num, num), stride=(num, num))
 
         self.fc1 = nn.Linear(1000, 1)
         # self.fc2 = nn.Linear(120, 84)
 
     def forward(self, x, train):
         if train:
-            self.tra.train()
+            #self.tra.train()
+            self.train()
         else:
-            self.tra.eval()
+            #self.tra.eval()
+            self.eval()
 
         x = self.tra(x)
         x = F.relu(x)
 
-        x = F.relu(self.fc1(x))
+        x = self.fc1(x)
 
         return x
 def make_net(device, config):
@@ -273,7 +280,6 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
     train_losses.append(train_loss/train_num_samp)
     train_accuracies.append(correct/total)
     etimes.append(time.time() - eb)
-
     pearsons.append(cc)
 
     return inputs.cpu().numpy()
@@ -341,6 +347,8 @@ def train_up_model(device, trainloader, valloader, etimes, train_losses, val_los
         optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom']) #lr=0.00000000001, momentum=0.3
     elif config['optim'] == 1:
         optimizer = optim.Adam(net.parameters(), lr=config['lr'])
+    else:
+        raise Exception('optimizer not selected in  connfig dictionary')
 
 
     for i_epoch, epoch in enumerate(range(config['epochs'])):  # loop over the dataset multiple times
@@ -429,55 +437,57 @@ def loadModel(pathToModel):
     net.load_state_dict(torch.load(pathToModel))
     return net
 
-def verifyLoaders():
-    config = {
-        "err_margin": 0.1,
-        "batch_size": 10,
-        "epochs": 500,
-        "useMultipleGPUs": False,
-        "useCuda": True,
-        "lm": False,
-        "arc": Rn(),
-        "lr": 1e-11,
-        "mom": 0.1
-    }
-    device = 'cuda:0'
-    rootForTrain = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader"
+# def verifyLoaders():
+#     config = {
+#         "err_margin": 0.1,
+#         "batch_size": 10,
+#         "epochs": 500,
+#         "useMultipleGPUs": False,
+#         "useCuda": True,
+#         "lm": False,
+#         "arc": Rn(),
+#         "lr": 1e-11,
+#         "mom": 0.1
+#     }
+#
+#     rootForTrain = "/mnt/tmpdata/data/isashu/smallerLoaders/firstSmallerTrainLoader"
+#
+#     trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+#
+#     net = make_net(device=device, config=config)
+#     criterion = nn.MSELoss(reduction='mean')
+#     #optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom'])  # lr=0.00000000001, momentum=0.3
+#
+#     sum = 0
+#     i = 0
+#     for data in valloader:
+#         if i == 0:
+#             inputs, labels = data[0].to(device), data[1].to(device)
+#             outputs = net(inputs, train=False)
+#             print(outputs)
+#             print(labels)
+#         i+=1
+#         loss = criterion(outputs, labels)
+#     embed()
+#     i = 0
+#     for data in valloader:
+#         if i == 0:
+#             inputs, labels = data[0].to(device), data[1].to(device)
+#             outputs = net(inputs, train=False)
+#             print(outputs)
+#             print(labels)
+#         i+=1
+#
+#     print(f'Sum of labels {sum}')
+#
+#
+#     #validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
 
-    trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
 
-    net = make_net(device=device, config=config)
-    criterion = nn.MSELoss(reduction='mean')
-    #optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom'])  # lr=0.00000000001, momentum=0.3
-
-    sum = 0
-    i = 0
-    for data in valloader:
-        if i == 0:
-            inputs, labels = data[0].to(device), data[1].to(device)
-            outputs = net(inputs, train=False)
-            print(outputs)
-            print(labels)
-        i+=1
-        loss = criterion(outputs, labels)
-    embed()
-    i = 0
-    for data in valloader:
-        if i == 0:
-            inputs, labels = data[0].to(device), data[1].to(device)
-            outputs = net(inputs, train=False)
-            print(outputs)
-            print(labels)
-        i+=1
-
-    print(f'Sum of labels {sum}')
-
-
-    #validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
-
-
-def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30,
+def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu_num =0,
         two_fc_mode=False):
+
+    torch.cuda.empty_cache()
 
     t = time.time()
     config = {
@@ -487,7 +497,7 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30,
         "useMultipleGPUs": False,
         "useCuda": True,
         "lm": False,
-        "arc": Rn(num=num, two_fc_mode=two_fc_mode),
+        "arc": Tr(num=num), #Rn(num=num, two_fc_mode=two_fc_mode), #Tr(num=num)
         "lr":  lr,
         "mom": mom,
         "optim": optim,
@@ -523,7 +533,7 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30,
     logger.info(f'two_fc_mode is {two_fc_mode}')
 
     # use the gpu
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device(('cuda:' + str(gpu_num)) if torch.cuda.is_available() else 'cpu')
 
     trainloader = make_testloader(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
     valloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
@@ -596,10 +606,13 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30,
     #              train_accuracies=train_accuracies, val_accuracies=val_accuracies,
     #              train_pearsons = train_pearsons, val_pearsons = val_pearsons)
     print(f'Accuracies are {final_accuracies}')
+
+    torch.cuda.empty_cache()
 if __name__ == "__main__":
+    print('Hi')
     #verifyLoaders()
 
-    rootDir='/mnt/tmpdata/data/isashu/overnightRuns'
-    loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/smallLoaders/"
-    main(rootDir, loaderRoot)
+    # rootDir='/mnt/tmpdata/data/isashu/garbage'
+    # loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/smallLoaders/"
+    # main(rootDir, loaderRoot, num=16)
 
