@@ -64,7 +64,7 @@ class CustomImageDataset(Dataset):
         if self.target_transform:
             label = self.target_transform(label)
 
-        return image, label
+        return image, label#, self.img_labels.iloc[idx + idx_offset, 0] #third return value should be the expt_filename
 
 '''
 # from IPython import embed;

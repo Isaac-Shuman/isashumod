@@ -344,7 +344,7 @@ def train_up_model(device, trainloader, valloader, etimes, train_losses, val_los
     net = make_net( device=device, config=config)
     criterion = nn.MSELoss(reduction='mean')
     if config['optim'] == 0:
-        optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom']) #lr=0.00000000001, momentum=0.3
+        optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom'], weight_decay=config['wd']) #lr=0.00000000001, momentum=0.3
     elif config['optim'] == 1:
         optimizer = optim.Adam(net.parameters(), lr=config['lr'])
     else:
@@ -375,7 +375,7 @@ def test(testloader, device, net, config):
                 inputs, labels = data[0].to(device), data[1].to(device)
             else:
                 inputs, labels = data
-            outputs = net(inputs, train=False)
+            outputs = net(inputs, train=True)
             print('arrived at predictions')
             total += labels.size(0)
             correct += (abs(outputs - labels) / labels < config['err_margin']).sum().item()
@@ -432,8 +432,7 @@ def plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, tra
 
     plt.show()
 
-def loadModel(pathToModel):
-    net = Net()
+def loadModel(pathToModel, net):
     net.load_state_dict(torch.load(pathToModel))
     return net
 
@@ -484,8 +483,9 @@ def loadModel(pathToModel):
 #     #validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses)
 
 
+
 def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu_num =0,
-        two_fc_mode=False):
+        two_fc_mode=False, wd=0.1):
 
     torch.cuda.empty_cache()
 
@@ -497,11 +497,12 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu
         "useMultipleGPUs": False,
         "useCuda": True,
         "lm": False,
-        "arc": Tr(num=num), #Rn(num=num, two_fc_mode=two_fc_mode), #Tr(num=num)
+        "arc": Rn(num=num, two_fc_mode=two_fc_mode), #Tr(num=num)
         "lr":  lr,
         "mom": mom,
         "optim": optim,
         "rootDir": rootDir,
+        "wd": wd
     }
 
     rootForTrain = os.path.join( loaderRoot, "trainLoader")
@@ -608,11 +609,119 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu
     print(f'Accuracies are {final_accuracies}')
 
     torch.cuda.empty_cache()
+
+def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu_num =0,
+        two_fc_mode=False, wd=0):
+    t = time.time()
+    config = {
+        "err_margin": 0.20,
+        "batch_size": 64,
+        "epochs": epochs,
+        "useMultipleGPUs": False,
+        "useCuda": True,
+        "lm": True,
+        "arc": Rn(num=num, two_fc_mode=two_fc_mode),  # Tr(num=num)
+        "lr": lr,
+        "mom": mom,
+        "optim": optim,
+        "rootDir": rootDir,
+        "wd": wd
+    }
+
+    rootForTrain = os.path.join(loaderRoot, "trainLoader")
+    rootForVal = os.path.join(loaderRoot, "valLoader")
+    rootForTest = os.path.join(loaderRoot, "testLoaders")
+
+    rootsForTest = ["1.25ALoader",
+                    "3.15ALoader",
+                    "5.45ALoader"]
+    rootsForTest = [os.path.join(rootForTest, dname) for dname in rootsForTest]
+
+    for dirname in [rootForTrain, rootForVal, rootForTest] + rootsForTest:
+        if not os.path.exists(dirname):
+            raise OSError("%s does not exist!" % dirname)
+
+    # the main output folder:
+    folderName = getInfoFolder(config)
+
+    log_filename = os.path.join(folderName, 'training.log')
+    setup_logger(log_filename)  # main could be replaced with anything
+    logger = logging.getLogger('main')
+    logger.info(f'train files in {rootForTrain}')
+    logger.info(f'validation files in {rootForVal}')
+    logger.info(f'test files in {rootForTest}')
+    logger.info(f'num is {num}')
+    logger.info(f'lr is {lr}')
+    logger.info(f'optim is {optim}')
+    logger.info(f'momentum is {mom}')
+    logger.info(f'two_fc_mode is {two_fc_mode}')
+
+    # use the gpu
+    device = torch.device(('cuda:' + str(gpu_num)) if torch.cuda.is_available() else 'cpu')
+
+    trainloader = make_testloader(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+    valloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
+
+    testloaders = []
+    for rootForTest in rootsForTest:
+        testloaders.append(make_testloader(make_dataset(root=rootForTest), batch_size=config['batch_size']))
+
+    print(f'Trainloader length: {len(trainloader)}')
+    etimes = []
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+    train_pearsons = []
+    val_pearsons = []
+    if not config['lm']:
+        net = train_up_model(
+            device=device,
+            trainloader=trainloader,
+            valloader=valloader,
+            etimes=etimes,
+            train_losses=train_losses,
+            val_losses=val_losses,
+            train_accuracies=train_accuracies,
+            val_accuracies=val_accuracies,
+            train_pearsons=train_pearsons,
+            val_pearsons=val_pearsons,
+            folderName=folderName,
+            config=config,
+        )
+    else:
+        net = loadModel(
+            "/mnt/tmpdata/data/isashu/weekendWithMaxPre/run_2023-08-04_23_22_26/modelFinal.pth", config['arc'])  # Current network must match loaded network
+        #/mnt/tmpdata/data/isashu/weekendWithMaxPre/run_2023-08-04_23_22_26
+        if (torch.cuda.device_count() > 1) and config['useMultipleGPUs']:
+            print(f"Let's use {torch.cuda.device_count()} GPUs!")
+            net = nn.DataParallel(net)
+        if config['useCuda']:
+            net.to(device, dtype=torch.float32)
+
+    #Verify model
+    final_accuracies = []
+    accuracy = test(
+        testloader=trainloader,
+        device=device,
+        net=net,
+        config=config
+    )
+    final_accuracies.append(accuracy)
+    print(f'Accuracies are {final_accuracies}')
+
+    #iterate through testloader
+    #for data in
+    
 if __name__ == "__main__":
     print('Hi')
-    #verifyLoaders()
 
-    # rootDir='/mnt/tmpdata/data/isashu/garbage'
-    # loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeDown/smallLoaders/"
-    # main(rootDir, loaderRoot, num=16)
+    rootDir='/mnt/tmpdata/data/isashu/garbage'
+    loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/smallerLoaders/"
 
+    plotGuesses(rootDir, loaderRoot, num=18)
+
+    #main(rootDir, loaderRoot, num=18)
+    #spotFinder.main(outdir, loaderRoot, gpu_num=gpu_num, epochs=num_ep, **params)
+
+    #weight decay is still not implemented
