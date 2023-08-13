@@ -10,6 +10,7 @@ num_ep = int(sys.argv[2])
 gpu_num = int(sys.argv[3])
 
 loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/bigLoaders/"
+loaderUnseenRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/smallLoaders/"
 
 def gen_params():
     num = 18  #random.choice([18, 34, 50])
@@ -17,7 +18,7 @@ def gen_params():
     lr = 4e-6 #np.exp(np.random.uniform(np.log(1e-10), np.log(1e-3)))
     #mom = random.choice([0, 0.2, 0.5, 0.8, 0.99])
     mom = 0.99 #random.choice([0, 0.9, 0.99])
-    wd = np.exp(np.random.uniform(np.log(1e-3), np.log(1e-1)))
+    wd = 0#np.exp(np.random.uniform(np.log(1e-3), np.log(1e-1)))
     two_fc_mode = 0#random.choice([0,1])
 
     params = {
@@ -36,7 +37,7 @@ while True:
     params = gen_params()
     print(params)
     try:
-        spotFinder.main(outdir, loaderRoot, gpu_num=gpu_num, epochs=num_ep, **params)
+        spotFinder.main(outdir, loaderRoot, loaderUnseenRoot, gpu_num=gpu_num, epochs=num_ep, **params)
     except Exception as err:
         print(str(err))
         pass

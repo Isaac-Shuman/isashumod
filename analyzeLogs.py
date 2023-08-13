@@ -14,13 +14,17 @@ for l in logs:
     lines = open(l, 'r').readlines()
     train_acc = number_extractor(lines, "TRAIN ACCURACIES")
     val_acc = number_extractor(lines, "VAL ACCURACIES")
+    uns_acc = number_extractor(lines, "UNSEEN ACCURACIES")
+
     train_pear = number_extractor(lines, "TRAIN PEARSON")
     val_pear = number_extractor(lines, "VAL PEARSON")
+    uns_pear = number_extractor(lines, "UNSEEN PEARSON")
+
     lr = number_extractor(lines, "lr")
     momentum = number_extractor(lines, "momentum")
 
-    data[l] = train_acc, val_acc, train_pear, val_pear
-    a, b, c, d = data[l]
+    data[l] = train_acc, val_acc, train_pear, val_pear, uns_acc, uns_pear
+    a, b, c, d, e, f = data[l]
 
     fig, axes = plt.subplots(1, 2)
     fig.set_size_inches((6, 3))
@@ -28,12 +32,15 @@ for l in logs:
 
     axes[0].plot(a, label='train')
     axes[0].plot(b, label='val')
+    axes[0].plot(e, label='uns')
     axes[0].set_xlabel("Epochs of training")
 
-    axes[1].plot(c, label='train')
-    axes[1].plot(d, label='val')
+    axes[1].plot(c, label='training')
+    axes[1].plot(d, label='validation')
+    axes[1].plot(f, label='uns')
 
-    fs = 16
+
+    fs = 30
     #axes[0, 0].set_yscale('log')
     axes[0].set_xlabel("Epochs of training", fontsize=fs)
     axes[0].set_ylabel("Accuracies", fontsize=fs)
@@ -43,14 +50,14 @@ for l in logs:
     axes[1].set_ylabel("Pearson correlation coefficients", fontsize=fs)
 
     for ax in axes:
-        ax.tick_params(labelsize=16)
-        ax.legend(prop={'size': 15}, loc='lower right')
+        ax.tick_params(labelsize=fs)
+        #ax.legend(prop={'size': 15}, loc='lower right', fontsize=fs)
         ax.grid(1, ls = '--')
 
     print('log is %s' % l)
     print('learning rate is %.10f' % lr[0])
     print('momentum is %.10f' % momentum[0])
-    plt.subplots_adjust(right=0.98, top=0.98, bottom=0.2, wspace=0.5)
+    plt.subplots_adjust(left=0.08, right=0.98, top=0.98, bottom=0.13, wspace=0.28)
     plt.show()
 
     '''

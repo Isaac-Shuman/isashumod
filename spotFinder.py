@@ -76,7 +76,7 @@ def make_dataset(root):
 
 def make_trainValLoaders(trainset, batch_size):
     # Split the training set into 50% training and 50% validation data
-    test_abs = int(len(trainset) * 0.9)
+    test_abs = int(len(trainset) * 0.95)
     #generator = torch.Generator().manual_seed(2)
     train_subset, val_subset = random_split(
         trainset, [test_abs, len(trainset) - test_abs]#, generator=generator
@@ -85,7 +85,7 @@ def make_trainValLoaders(trainset, batch_size):
     trainloader = torch.utils.data.DataLoader(train_subset, batch_size=batch_size,
                                               shuffle=True)
     valloader = torch.utils.data.DataLoader(val_subset, batch_size=batch_size,
-                                            shuffle=True)
+                                            shuffle=False)
 
     return trainloader, valloader
 def make_testloader(dataset, batch_size):
@@ -111,7 +111,7 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(fema*int(width_of_x*width_of_y), 100)
         self.fc2 = nn.Linear(100, 1)
 
-    def forward(self, x, train):
+    def forward(self, x):
         #x.shape = 505 * 492
         #x = self.pool(x)
         x = F.relu(self.conv1(x))
@@ -145,15 +145,15 @@ class Rn(nn.Module):
         self.fc_1000_to_1 = nn.Linear(1000, 1)
         # self.fc2 = nn.Linear(120, 84)
 
-    def forward(self, x, train):
+    def forward(self, x):
         # x.shape = 505 * 492
         # x = self.pool(x)
-        if train:
-            self.train()
-            #self.tra.train()
-        else:
-            self.eval()
-            #self.tra.eval()
+        # if train:
+        #     self.train()
+        #     #self.tra.train()
+        # else:
+        #     self.eval()
+        #     #self.tra.eval()
 
         x = self.res(x)
         x = F.relu(x)
@@ -180,13 +180,13 @@ class Tr(nn.Module):
         self.fc1 = nn.Linear(1000, 1)
         # self.fc2 = nn.Linear(120, 84)
 
-    def forward(self, x, train):
-        if train:
-            #self.tra.train()
-            self.train()
-        else:
-            #self.tra.eval()
-            self.eval()
+    def forward(self, x):
+        # if train:
+        #     #self.tra.train()
+        #     self.train()
+        # else:
+        #     #self.tra.eval()
+        #     self.eval()
 
         x = self.tra(x)
         x = F.relu(x)
@@ -234,7 +234,7 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
             print('took %.4f seconds to zero the gradients' % etime)
 
         ti = time.time()
-        outputs = net(inputs, train=True)  # forward
+        outputs = net(inputs)  # forward
         #print(f'outputs: {outputs}')
         etime = time.time() - ti
         if track_times:
@@ -285,7 +285,7 @@ def descend(trainloader, useCuda, device, optimizer, net, criterion, train_losse
     return inputs.cpu().numpy()
 
 
-def validate(valloader, device, net, criterion, val_losses, val_accuracies, pearsons, err_margin=0.1, inputs2=None):
+def validate(valloader, device, net, criterion, val_losses, val_accuracies, pearsons, prefix, err_margin=0.1, inputs2=None):
     logger = logging.getLogger('main')
     val_loss = 0
     train_num_samp = 0
@@ -303,7 +303,7 @@ def validate(valloader, device, net, criterion, val_losses, val_accuracies, pear
             #     inputs, labels = data
             inputs, labels = data[0].to(device), data[1].to(device)
             # calculate outputs by running images through the network
-            outputs = net(inputs, train=False)
+            outputs = net(inputs)
 
             #for the pearson cc
             all_labs += [l.item() for l in labels]
@@ -319,7 +319,7 @@ def validate(valloader, device, net, criterion, val_losses, val_accuracies, pear
             correct += (abs(outputs - labels)/labels < err_margin).sum().item()
 
     cc = pearsonr(all_labs, all_outs)[0]
-    b = torch.tensor(inputs2).to(device)
+    #b = torch.tensor(inputs2).to(device)
 
     val_accuracies.append(correct/total)
     pearsons.append(cc)
@@ -327,10 +327,9 @@ def validate(valloader, device, net, criterion, val_losses, val_accuracies, pear
     if numpy.allclose(all_outs, 0):
         print('You failed')
 
-    logger.info(f'VAL LOSS $$$: {val_loss}')
-    logger.info(f'VAL ACCURACIES $$$: {correct/total}')
-    logger.info(f'VAL PEARSON $$$: {cc}')
-    #embed()
+    logger.info(f'{prefix} LOSS $$$: {val_loss}')
+    logger.info(f'{prefix} ACCURACIES $$$: {correct/total}')
+    logger.info(f'{prefix} PEARSON $$$: {cc}')
 
     val_losses.append(val_loss/train_num_samp)
 
@@ -338,8 +337,9 @@ def save_epoch(net, epoch, folderName):
     pathToModel = os.path.join(folderName, 'modelE'+str(epoch)+'.pth')
     torch.save(net.state_dict(), pathToModel)
 
-def train_up_model(device, trainloader, valloader, etimes, train_losses, val_losses, train_accuracies, val_accuracies,
-                   train_pearsons, val_pearsons, folderName, config):
+def train_up_model(device, trainloader, valloader, unseenloader, etimes, train_losses, val_losses, unseen_losses,
+                   train_accuracies, val_accuracies, unseen_accuracies,
+                   train_pearsons, val_pearsons, unseen_pearsons, folderName, config):
     #Make the network and have it utilize the gpu
     net = make_net( device=device, config=config)
     criterion = nn.MSELoss(reduction='mean')
@@ -350,16 +350,23 @@ def train_up_model(device, trainloader, valloader, etimes, train_losses, val_los
     else:
         raise Exception('optimizer not selected in  connfig dictionary')
 
-
     for i_epoch, epoch in enumerate(range(config['epochs'])):  # loop over the dataset multiple times
         print(f"Beginning Epoch {i_epoch+1} / {config['epochs']}")
+        net.train()
         a = descend(trainloader=trainloader, useCuda=config['useCuda'], device=device, optimizer=optimizer, net=net,
                     criterion=criterion, train_losses=train_losses, train_accuracies=train_accuracies,
                     pearsons=train_pearsons, err_margin=config['err_margin'], etimes=etimes)
+        net.eval()
+        #validate on familiar experiments
         validate(valloader=valloader, device=device, net=net, criterion=criterion, val_losses=val_losses,
-                 val_accuracies=val_accuracies, err_margin=config['err_margin'], pearsons=val_pearsons, inputs2=a)
-        if epoch % 5 == 0:
+                 val_accuracies=val_accuracies, prefix='VAL', err_margin=config['err_margin'], pearsons=val_pearsons)
+        #validate on unfamiliar experiments
+        validate(valloader=unseenloader, device=device, net=net, criterion=criterion, val_losses=unseen_losses,
+                 val_accuracies=unseen_accuracies, prefix='UNSEEN', err_margin=config['err_margin'],
+                 pearsons=unseen_pearsons)
+        if epoch % 10 == 0:
             save_epoch(net=net, epoch=epoch, folderName=folderName)
+
 
     print('Finished Training')
     return net
@@ -369,13 +376,16 @@ def test(testloader, device, net, config):
     correct = 0
     total = 0
     # since we're not training, we don't need to calculate the gradients for our outputs
+    net.eval()
     with torch.no_grad():
         for data in testloader:
             if config['useCuda']:
                 inputs, labels = data[0].to(device), data[1].to(device)
             else:
                 inputs, labels = data
-            outputs = net(inputs, train=True)
+            t = time.time()
+            outputs = net(inputs)
+            print('time to predict: %.6f' % (time.time()-t))
             print('arrived at predictions')
             total += labels.size(0)
             correct += (abs(outputs - labels) / labels < config['err_margin']).sum().item()
@@ -433,7 +443,7 @@ def plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, tra
     plt.show()
 
 def loadModel(pathToModel, net):
-    net.load_state_dict(torch.load(pathToModel))
+    net.load_state_dict(torch.load(pathToModel, map_location=torch.device('cpu')))
     return net
 
 # def verifyLoaders():
@@ -462,7 +472,7 @@ def loadModel(pathToModel, net):
 #     for data in valloader:
 #         if i == 0:
 #             inputs, labels = data[0].to(device), data[1].to(device)
-#             outputs = net(inputs, train=False)
+#             outputs = net(inputs)
 #             print(outputs)
 #             print(labels)
 #         i+=1
@@ -484,14 +494,14 @@ def loadModel(pathToModel, net):
 
 
 
-def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu_num =0,
+def main(rootDir, loaderRoot, loaderUnseenRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu_num =0,
         two_fc_mode=False, wd=0.1):
 
     torch.cuda.empty_cache()
 
     t = time.time()
     config = {
-        "err_margin": 0.20,
+        "err_margin": 0.1,
         "batch_size": 64,
         "epochs": epochs,
         "useMultipleGPUs": False,
@@ -506,7 +516,7 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu
     }
 
     rootForTrain = os.path.join( loaderRoot, "trainLoader")
-    rootForVal = os.path.join(loaderRoot, "valLoader")
+    rootForVal = os.path.join(loaderUnseenRoot, "valLoader")
     rootForTest = os.path.join(loaderRoot, "testLoaders")
 
     rootsForTest = ["1.25ALoader",
@@ -536,8 +546,10 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu
     # use the gpu
     device = torch.device(('cuda:' + str(gpu_num)) if torch.cuda.is_available() else 'cpu')
 
-    trainloader = make_testloader(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
-    valloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
+    # trainloader = make_testloader(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+    # valloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
+    trainloader, valloader = make_trainValLoaders(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
+    unseenloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
 
     testloaders = []
     for rootForTest in rootsForTest:
@@ -547,24 +559,31 @@ def main(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu
     etimes = []
     train_losses = []
     val_losses = []
+    unseen_losses = []
     train_accuracies = []
     val_accuracies = []
+    unseen_accuracies =[]
     train_pearsons = []
     val_pearsons = []
+    unseen_pearsons = []
     if not config['lm']:
         net = train_up_model(
             device=device,
             trainloader=trainloader,
             valloader=valloader,
+            unseenloader=unseenloader,
             etimes=etimes,
             train_losses=train_losses,
             val_losses=val_losses,
+            unseen_losses=unseen_losses,
             train_accuracies=train_accuracies,
             val_accuracies=val_accuracies,
+            unseen_accuracies=unseen_accuracies,
             train_pearsons=train_pearsons,
             val_pearsons=val_pearsons,
+            unseen_pearsons=unseen_pearsons,
             folderName=folderName,
-            config=config,
+            config=config
         )
     else:
         net = loadModel("/mnt/tmpdata/data/isashu/runFolders/run_2023-08-STUFF.pth") #Current network must match loaded network
@@ -614,8 +633,8 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
         two_fc_mode=False, wd=0):
     t = time.time()
     config = {
-        "err_margin": 0.20,
-        "batch_size": 64,
+        "err_margin": 0.1,
+        "batch_size": 1,
         "epochs": epochs,
         "useMultipleGPUs": False,
         "useCuda": True,
@@ -693,11 +712,16 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
         net = loadModel(
             "/mnt/tmpdata/data/isashu/weekendWithMaxPre/run_2023-08-04_23_22_26/modelFinal.pth", config['arc'])  # Current network must match loaded network
         #/mnt/tmpdata/data/isashu/weekendWithMaxPre/run_2023-08-04_23_22_26
-        if (torch.cuda.device_count() > 1) and config['useMultipleGPUs']:
-            print(f"Let's use {torch.cuda.device_count()} GPUs!")
-            net = nn.DataParallel(net)
-        if config['useCuda']:
-            net.to(device, dtype=torch.float32)
+        # if (torch.cuda.device_count() > 1) and config['useMultipleGPUs']:
+        #     print(f"Let's use {torch.cuda.device_count()} GPUs!")
+        #     net = nn.DataParallel(net)
+        # if config['useCuda']:
+        #     net.to(device, dtype=torch.float32)
+
+    # net.eval()
+    # for m in net.modules():
+    #     if isinstance(m, nn.BatchNorm2d):
+    #         m.track_running_stats = False
 
     #Verify model
     final_accuracies = []
@@ -716,10 +740,11 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
 if __name__ == "__main__":
     print('Hi')
 
-    rootDir='/mnt/tmpdata/data/isashu/garbage'
-    loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/smallerLoaders/"
-
-    plotGuesses(rootDir, loaderRoot, num=18)
+    # rootDir='/mnt/tmpdata/data/isashu/garbage'
+    # loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/bigLoaders/"
+    #
+    #
+    # plotGuesses(rootDir, loaderRoot, num=18, gpu_num=0)
 
     #main(rootDir, loaderRoot, num=18)
     #spotFinder.main(outdir, loaderRoot, gpu_num=gpu_num, epochs=num_ep, **params)
