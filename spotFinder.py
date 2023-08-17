@@ -10,13 +10,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from IPython import embed
-from matplotlib import pylab as plt
+from matplotlib import pyplot as plt #changed pylab to pyplot
 from torch.utils.data import random_split
 from isashumod.dataLoader import CustomImageDataset  # import dataloader file
 from torchvision.models import resnet50, resnet34, resnet18, vit_b_16, vit_b_32, ResNet50_Weights
 from scipy.stats import pearsonr
 import numpy
-
+import re
 #2527, 2463
 
 
@@ -629,12 +629,52 @@ def main(rootDir, loaderRoot, loaderUnseenRoot, num=18, lr=1e-7, optim=0, mom=0.
 
     torch.cuda.empty_cache()
 
+def get_num(fname):
+    sr = re.search("[0-9]{5}", fname)
+    assert sr is not None
+    return int(fname[sr.start(): sr.end()])
+
+
+def plot_trend(loader, net, device, pre):
+    fs = 30
+    # logger = logging.getLogger('main')
+    net.eval()
+    with torch.no_grad():
+        vals =[]
+        act = []
+        exps = []
+
+        for data in loader:
+            image, act_count, filename = data[0].to(device), data[1], data[2]
+            pre_count = net(image)
+            #exp = int(filename[-17:-12])
+
+            vals += [d.item() for d in pre_count]
+            act += [d.item() for d in act_count]
+
+            exps += [get_num(d) for d in filename]
+    from scipy.stats import pearsonr
+    cc = pearsonr(vals, act)[0]
+    acc = (abs(numpy.array(vals) - numpy.array(act))/numpy.array(act) < 0.2).sum()/len(vals)
+
+    fig, ax = plt.subplots()
+
+    ax.tick_params(labelsize=fs)
+    ax.scatter(exps, act, c='blue', marker='<')
+    ax.scatter(exps, vals, c='red')
+    plt.title("CC=%.2f, Accuracy=%.2f" % (cc, acc), fontsize=fs)
+    ax.set_xlabel("Experiment Number", fontsize=fs)
+    ax.set_ylabel("Spot Counts", fontsize=fs)
+    plt.subplots_adjust(bottom=0.14)
+    plt.show()
+
+
 def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=30, gpu_num =0,
         two_fc_mode=False, wd=0):
     t = time.time()
     config = {
         "err_margin": 0.1,
-        "batch_size": 1,
+        "batch_size": 20,
         "epochs": epochs,
         "useMultipleGPUs": False,
         "useCuda": True,
@@ -647,8 +687,6 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
         "wd": wd
     }
 
-    rootForTrain = os.path.join(loaderRoot, "trainLoader")
-    rootForVal = os.path.join(loaderRoot, "valLoader")
     rootForTest = os.path.join(loaderRoot, "testLoaders")
 
     rootsForTest = ["1.25ALoader",
@@ -656,95 +694,37 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
                     "5.45ALoader"]
     rootsForTest = [os.path.join(rootForTest, dname) for dname in rootsForTest]
 
-    for dirname in [rootForTrain, rootForVal, rootForTest] + rootsForTest:
-        if not os.path.exists(dirname):
-            raise OSError("%s does not exist!" % dirname)
-
-    # the main output folder:
-    folderName = getInfoFolder(config)
-
-    log_filename = os.path.join(folderName, 'training.log')
-    setup_logger(log_filename)  # main could be replaced with anything
-    logger = logging.getLogger('main')
-    logger.info(f'train files in {rootForTrain}')
-    logger.info(f'validation files in {rootForVal}')
-    logger.info(f'test files in {rootForTest}')
-    logger.info(f'num is {num}')
-    logger.info(f'lr is {lr}')
-    logger.info(f'optim is {optim}')
-    logger.info(f'momentum is {mom}')
-    logger.info(f'two_fc_mode is {two_fc_mode}')
-
     # use the gpu
     device = torch.device(('cuda:' + str(gpu_num)) if torch.cuda.is_available() else 'cpu')
-
-    trainloader = make_testloader(make_dataset(root=rootForTrain), batch_size=config['batch_size'])
-    valloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
 
     testloaders = []
     for rootForTest in rootsForTest:
         testloaders.append(make_testloader(make_dataset(root=rootForTest), batch_size=config['batch_size']))
 
-    print(f'Trainloader length: {len(trainloader)}')
-    etimes = []
-    train_losses = []
-    val_losses = []
-    train_accuracies = []
-    val_accuracies = []
-    train_pearsons = []
-    val_pearsons = []
-    if not config['lm']:
-        net = train_up_model(
-            device=device,
-            trainloader=trainloader,
-            valloader=valloader,
-            etimes=etimes,
-            train_losses=train_losses,
-            val_losses=val_losses,
-            train_accuracies=train_accuracies,
-            val_accuracies=val_accuracies,
-            train_pearsons=train_pearsons,
-            val_pearsons=val_pearsons,
-            folderName=folderName,
-            config=config,
-        )
-    else:
-        net = loadModel(
-            "/mnt/tmpdata/data/isashu/weekendWithMaxPre/run_2023-08-04_23_22_26/modelFinal.pth", config['arc'])  # Current network must match loaded network
-        #/mnt/tmpdata/data/isashu/weekendWithMaxPre/run_2023-08-04_23_22_26
-        # if (torch.cuda.device_count() > 1) and config['useMultipleGPUs']:
-        #     print(f"Let's use {torch.cuda.device_count()} GPUs!")
-        #     net = nn.DataParallel(net)
-        # if config['useCuda']:
-        #     net.to(device, dtype=torch.float32)
+    net = loadModel("/mnt/tmpdata/data/isashu/thousandYearRun/run_2023-08-13_13_07_40/modelE900.pth", config['arc'])  # Current network must match loaded network
+    device = 'cuda:1'
+    net.to(device, dtype=torch.float32)
 
-    # net.eval()
-    # for m in net.modules():
-    #     if isinstance(m, nn.BatchNorm2d):
-    #         m.track_running_stats = False
 
-    #Verify model
-    final_accuracies = []
-    accuracy = test(
-        testloader=trainloader,
-        device=device,
-        net=net,
-        config=config
-    )
-    final_accuracies.append(accuracy)
-    print(f'Accuracies are {final_accuracies}')
+    # folderName = rootDir
+    # if not os.path.exists(folderName):
+    #     os.makedirs(folderName)
+    # log_filename = os.path.join(folderName, 'outputs.log')
+    # setup_logger(log_filename)  # main could be replaced with anything
+    # logger = logging.getLogger('main')
+    # logger.info(f'test files in {rootForTest}')
 
-    #iterate through testloader
-    #for data in
+    i = 0
+    for loader in testloaders:
+        plot_trend(loader, net, device, pre=rootsForTest[i][:4])
+        i+=1
     
 if __name__ == "__main__":
     print('Hi')
 
-    # rootDir='/mnt/tmpdata/data/isashu/garbage'
-    # loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/bigLoaders/"
-    #
-    #
-    # plotGuesses(rootDir, loaderRoot, num=18, gpu_num=0)
+    rootDir='/mnt/tmpdata/data/isashu/garbage'
+    loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/bigLoaders/"
+    plotGuesses(rootDir, loaderRoot, num=18, gpu_num=0)
 
     #main(rootDir, loaderRoot, num=18)
     #spotFinder.main(outdir, loaderRoot, gpu_num=gpu_num, epochs=num_ep, **params)

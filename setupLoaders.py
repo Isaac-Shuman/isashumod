@@ -15,6 +15,7 @@ def processImage(img, cond_meth):
     returns a tensor
     '''
     cond_img = torch.tensor(img.astype(numpy.float32)).unsqueeze(0)
+    cond_img.to('cpu')
     cond_img = cond_meth(cond_img)  # .squeeze()
 
     lt = 0
@@ -140,7 +141,7 @@ def setupTestLoaders(raw_big_dir, raw_directories, pro_big_dir, per_files, cond_
 
 def main():
     new_loaders = 'threeMax'
-    all_loaders = '/mnt/tmpdata/data/isashu/newLoaders'
+    all_loaders = '/mnt/tmpdata/data/isashu/garbage'
     big_dir = os.path.join(all_loaders, new_loaders)
     os.mkdir(big_dir)
 
@@ -163,6 +164,10 @@ def main():
 
         train_loader = os.path.join(loaders, 'trainLoader')
         os.mkdir(train_loader)
+
+        time_prepro(raw_big_dir=raw_big_dir,raw_directories=raw_train_directories,
+                    per_files=loaderSizeVals[i], cond_meth_name=cond_meth_name)
+
         setupTrainLoader(raw_big_dir=raw_big_dir,raw_directories=raw_train_directories, pro_big_dir=train_loader,
                          per_files=loaderSizeVals[i], cond_meth_name=cond_meth_name)
 
@@ -178,6 +183,42 @@ def main():
 
         i += 1
 
+def time_prepro(raw_big_dir, raw_directories, per_files, cond_meth_name):
+    ini = time.time()
+
+    cond_meth = getattr(condition, cond_meth_name)()
+
+    for di in raw_directories:  # for direct in raw_directiories
+        print(di)
+        # generate the path...
+        raw_dir = os.path.join(raw_big_dir, di)  # 1.for the raw directory
+        num_files = len(os.listdir(raw_dir))
+        firstFiles = True  # True if you are making the dataset from the first several files as opposed to the last several files
+
+        i = 0
+        for filename in os.listdir(raw_dir):
+            i += 1
+            print(filename)
+            # This split may be imperfect
+            # If we want the first per_files*100 percent of files, break the for loop as soon as i is past a certain index
+            if firstFiles and i > per_files * num_files:
+                break
+            # If we want the last per_files*100 percent of files, don't load the files until i is past a certain index
+            if not firstFiles and i <= (1 - per_files) * num_files + 1:
+                continue
+
+            if filename.endswith('.expt'):
+                # 4.Extract the numpy image from the experiment file
+                # What is the experiment list?
+                El = ExperimentList.from_file(os.path.join(raw_dir, filename))
+                raw_img = El[0].imageset.get_raw_data(0)[0].as_numpy_array()
+
+                bp = time.time()
+                cond_img = processImage(raw_img, cond_meth)
+                print('Time to process is %.6f' % (time.time() - bp))
+
+        print(f'Time is: {time.time() - ini}')
+
+
 if __name__ == "__main__":
     main()
-
