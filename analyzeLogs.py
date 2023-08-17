@@ -30,14 +30,14 @@ for l in logs:
     fig.set_size_inches((6, 3))
     #make it look right with big letters
 
-    axes[0].plot(a, label='train')
-    axes[0].plot(b, label='val')
-    axes[0].plot(e, label='uns')
+    axes[0].plot(a, label='train', lw=2)
+    axes[0].plot(b, label='val', lw=2)#  uncommennt for top right pics , color="C2")
+    axes[0].plot(e, label='uns', lw=2)
     axes[0].set_xlabel("Epochs of training")
 
-    axes[1].plot(c, label='training')
-    axes[1].plot(d, label='validation')
-    axes[1].plot(f, label='uns')
+    axes[1].plot(c, label='training', lw=2)
+    axes[1].plot(d, label='validation', lw=2) #, color="C2")
+    axes[1].plot(f, label='uns', lw=2)
 
 
     fs = 30
