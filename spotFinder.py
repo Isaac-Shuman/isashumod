@@ -635,7 +635,7 @@ def get_num(fname):
     return int(fname[sr.start(): sr.end()])
 
 
-def plot_trend(loader, net, device, pre):
+def plot_trend(loader, net, device, err_margin, pre):
     fs = 30
     # logger = logging.getLogger('main')
     net.eval()
@@ -655,7 +655,7 @@ def plot_trend(loader, net, device, pre):
             exps += [get_num(d) for d in filename]
     from scipy.stats import pearsonr
     cc = pearsonr(vals, act)[0]
-    acc = (abs(numpy.array(vals) - numpy.array(act))/numpy.array(act) < 0.2).sum()/len(vals)
+    acc = (abs(numpy.array(vals) - numpy.array(act))/numpy.array(act) < err_margin).sum()/len(vals)
 
     fig, ax = plt.subplots()
 
@@ -673,7 +673,7 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
         two_fc_mode=False, wd=0):
     t = time.time()
     config = {
-        "err_margin": 0.1,
+        "err_margin": 0.2,
         "batch_size": 20,
         "epochs": epochs,
         "useMultipleGPUs": False,
@@ -686,7 +686,7 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
         "rootDir": rootDir,
         "wd": wd
     }
-
+    rootForVal = os.path.join(loaderRoot, "valLoader")
     rootForTest = os.path.join(loaderRoot, "testLoaders")
 
     rootsForTest = ["1.25ALoader",
@@ -701,10 +701,33 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
     for rootForTest in rootsForTest:
         testloaders.append(make_testloader(make_dataset(root=rootForTest), batch_size=config['batch_size']))
 
-    net = loadModel("/mnt/tmpdata/data/isashu/thousandYearRun/run_2023-08-13_13_07_40/modelE900.pth", config['arc'])  # Current network must match loaded network
+    unseenloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
+
+    net = loadModel("/mnt/tmpdata/data/isashu/thousandYearRun/run_2023-08-13_13_07_40/modelFinal.pth", config['arc'])  # Current network must match loaded network
     device = 'cuda:1'
     net.to(device, dtype=torch.float32)
-
+    #
+    # net.eval()
+    # with torch.no_grad():
+    #     vals = []
+    #     act = []
+    #     exps = []
+    #
+    #     for data in unseenloader:
+    #         image, act_count, filename = data[0].to(device), data[1], data[2]
+    #         pre_count = net(image)
+    #         # exp = int(filename[-17:-12])
+    #
+    #         vals += [d.item() for d in pre_count]
+    #         act += [d.item() for d in act_count]
+    #
+    #         exps += [get_num(d) for d in filename]
+    # from scipy.stats import pearsonr
+    # cc = pearsonr(vals, act)[0]
+    # acc = (abs(numpy.array(vals) - numpy.array(act)) / numpy.array(act) < config['err_margin']).sum() / len(vals)
+    #
+    # print('cc is %f' % cc)
+    # print('accuracy is %f' % acc)
 
     # folderName = rootDir
     # if not os.path.exists(folderName):
@@ -716,7 +739,7 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
 
     i = 0
     for loader in testloaders:
-        plot_trend(loader, net, device, pre=rootsForTest[i][:4])
+        plot_trend(loader, net, device, pre=rootsForTest[i][:4], err_margin=config['err_margin'])
         i+=1
     
 if __name__ == "__main__":
