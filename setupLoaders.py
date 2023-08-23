@@ -23,65 +23,67 @@ def processImage(img, cond_meth):
 
     return cond_img
 
-def setupTrainLoader(raw_big_dir, raw_directories, pro_big_dir, per_files, cond_meth_name):
+def addExpFiles(raw_dir, firstFiles, per_files, num_files, cond_meth,  hd, writer):
+    i = 0
+    for filename in os.listdir(raw_dir):
+        i += 1
+        print(filename)
+        # This split may be imperfect
+        # If we want the first per_files*100 percent of files, break the for loop as soon as i is past a certain index
+        if firstFiles and i > per_files * num_files:
+            break
+        # If we want the last per_files*100 percent of files, don't load the files until i is past a certain index
+        if not firstFiles and i <= (1 - per_files) * num_files + 1:
+            continue
 
-    # make everything go in the for loop and delete the current pro_dir
-    ini = time.time()
+        if filename.endswith('.expt'):
+            # Get the processed numpy image from the .expt file
+            El = ExperimentList.from_file(os.path.join(raw_dir, filename))
+            raw_img = El[0].imageset.get_raw_data(0)[0].as_numpy_array()
+            cond_img = processImage(raw_img, cond_meth)
 
-    pro_dir = pro_big_dir
-    # Open an hdf file
-    hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
-    cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
+            #Get the numbber of spots from the corresponding .expt file
+            refl_fname = filename.replace(".expt", ".refl")
+            num_spot = len(flex.reflection_table.from_file(os.path.join(raw_dir, refl_fname)))
 
-    hd = h5py.File(hd_filename, "w-")  # The w- should cause this command to fail if the file already exists
-
-    cond_meth = getattr(condition, cond_meth_name)()
-
-    cs = open(cs_filename, 'w')
-    writer = csv.writer(cs)
-
+            # write a row to the csv file
+            writer.writerow([filename, num_spot])
+            hd.create_dataset(filename, data=cond_img)
+def addExpDirs(raw_directories, raw_big_dir, per_files, cond_meth, hd, writer):
     for di in raw_directories:  # for direct in raw_directiories
         print(di)
         # generate the path...
         raw_dir = os.path.join(raw_big_dir, di)  # 1.for the raw directory
         num_files = len(os.listdir(raw_dir))
         firstFiles = True  # True if you are making the dataset from the first several files as opposed to the last several files
+        addExpFiles(raw_dir, firstFiles, per_files, num_files, cond_meth,  hd, writer)
 
-        i = 0
-        for filename in os.listdir(raw_dir):
-            i += 1
-            print(filename)
-            #This split may be imperfect
-            # If we want the first per_files*100 percent of files, break the for loop as soon as i is past a certain index
-            if firstFiles and i > per_files * num_files:
-                break
-            # If we want the last per_files*100 percent of files, don't load the files until i is past a certain index
-            if not firstFiles and i <= (1 - per_files) * num_files + 1:
-                continue
+def mkFiles(pro_big_dir):
+    # Create an hdf file
+    hd_filename = os.path.join(pro_big_dir, "imageNameAndImage.hdf5")
+    hd = h5py.File(hd_filename, "w-")  # The w- should cause this command to fail if the file already exists
+    # Create a csv file
+    cs_filename = os.path.join(pro_big_dir, "imageNameAndSpots.csv")
+    cs = open(cs_filename, 'w')
 
-            if filename.endswith('.expt'):
-                # 4.Extract the numpy image from the experiment file
-                # What is the experiment list?
-                El = ExperimentList.from_file(os.path.join(raw_dir, filename))
-                raw_img = El[0].imageset.get_raw_data(0)[0].as_numpy_array()
+    return hd, cs
 
-                cond_img = processImage(raw_img, cond_meth)
-                # 5.Store the numpy image in the hdf file
-                dset = hd.create_dataset(filename, data=cond_img)
-
-                # Extract the # of spots from the corresponding refl files
-                refl_fname = filename.replace(".expt", ".refl")
-                R = flex.reflection_table.from_file(os.path.join(raw_dir, refl_fname))
-                num_spot = len(R)
-
-                # write a row to the csv file
-                writer.writerow([filename, num_spot])
-        print(f'Time is: {time.time() - ini}')
-
+def closeFiles(hd, cs, cond_meth_name, raw_big_dir):
     cs.close()
     hd.attrs["condition_method_name"] = cond_meth_name
     hd.attrs["root folder"] = raw_big_dir
     hd.close()
+
+def setupTrainLoader(raw_big_dir, raw_directories, pro_big_dir, per_files, cond_meth_name):
+
+    hd, cs = mkFiles(pro_big_dir=pro_big_dir)  #Make hdf5 and csv files
+    writer = csv.writer(cs)
+
+    cond_meth = getattr(condition, cond_meth_name)() #Get conditioning method
+
+    addExpDirs(raw_directories, raw_big_dir, per_files, cond_meth, hd, writer)
+
+    closeFiles(hd, cs, cond_meth_name, raw_big_dir)
 
 
 def setupTestLoaders(raw_big_dir, raw_directories, pro_big_dir, per_files, cond_meth_name):
@@ -93,50 +95,15 @@ def setupTestLoaders(raw_big_dir, raw_directories, pro_big_dir, per_files, cond_
         pro_dir = os.path.join(pro_big_dir, di[:5] + 'Loader')#2.for the processed directory
         os.mkdir(pro_dir)
 
-        # Open an hdf file
-        hd_filename = os.path.join(pro_dir, "imageNameAndImage.hdf5")
-        cs_filename = os.path.join(pro_dir, "imageNameAndSpots.csv")
-        hd = h5py.File(hd_filename, "w-")
-
-        cs = open(cs_filename, 'w')
+        hd, cs = mkFiles(pro_big_dir=pro_dir)  # Make hdf5 and csv files
         writer = csv.writer(cs)
 
         num_files = len(os.listdir(raw_dir))
         firstFiles = True #True if you are making the dataset from the first several files as opposed to the last several files
 
-        i = 0
-        for filename in os.listdir(raw_dir):
-            i += 1
-            print(filename)
-            # If we want the first per_files*100 percent of files, break the for loop as soon as i is past a certain index
-            if firstFiles and i > per_files * num_files:
-                break
-            # If we want the last per_files*100 percent of files, don't load the files until i is past a certain index
-            if not firstFiles and i <= (1 - per_files)*num_files + 1:
-                continue
+        addExpFiles(raw_dir, firstFiles, per_files, num_files, cond_meth, hd, writer)
 
-            if filename.endswith('.expt'):
-                # 4.Extract the numpy image from the experiment file
-                # What is the experiment list?
-                El = ExperimentList.from_file(os.path.join(raw_dir, filename))
-                raw_img = El[0].imageset.get_raw_data(0)[0].as_numpy_array()
-
-                cond_img = processImage(img=raw_img, cond_meth=cond_meth)
-                # 5.Store the numpy image in the hdf file
-                dset = hd.create_dataset(filename, data=cond_img)
-
-                # Extract the # of spots from the corresponding refl files
-                refl_fname = filename.replace(".expt", ".refl")
-                R = flex.reflection_table.from_file(os.path.join(raw_dir, refl_fname))
-                num_spot = len(R)
-
-                # write a row to the csv file
-                writer.writerow([filename, num_spot])
-
-        cs.close()
-        hd.attrs["condition_method_name"] = cond_meth_name
-        hd.attrs["root folder"] = raw_dir
-        hd.close()
+        closeFiles(hd, cs, cond_meth_name, raw_big_dir=raw_dir)
 
 
 def main():
