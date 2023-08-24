@@ -14,6 +14,26 @@ import torchvision
 annotations_file should be the full path of the csv file with rows [image name, # of spots]
 '''
 
+
+def process_img(img, useSqrt):
+    pro_img = img
+
+    lt = 0
+    pro_img[pro_img < lt] = lt
+    if useSqrt:
+        pro_img = numpy.sqrt(pro_img)
+    return pro_img
+
+    # image = torch.tensor(image)
+
+    # image = image.squeeze(dim=0)
+    # if len(image.shape) == 2:
+    #     image = image[None]  # this is called broadcasting, adds an extra dimension
+    # image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
+
+    # image = self.transform(image).unsqueeze(dim=0) #Added for ResNet
+    # image = numpy.repeat(image, 3, axis=0) #take this out and modify the ResNet
+
 #LAL = 1 #Use 1/LAL of the dataset
 class CustomImageDataset(Dataset):
 
@@ -28,66 +48,20 @@ class CustomImageDataset(Dataset):
     def __len__(self):
         return len(self.img_labels)#//LAL
 
+
+    def process_label(self, label):
+        pro_lab = label
+        pro_lab = torch.tensor([pro_lab]).type(torch.float32)  # label transformation
+        return pro_lab
+
     def __getitem__(self, idx):
         #get the image as a numpy array
-        #The first 300 items are reserved for the testing data set
-        idx_offset = 0
-        #if not self.test:
-         #   idx_offset += 300
         with h5py.File(self.path_to_hdf5, 'r') as f:
-            image = f[self.img_labels.iloc[idx + idx_offset, 0]][()]
+            image = f[self.img_labels.iloc[idx, 0]][()]
+        image = process_img(image, useSqrt=self.useSqrt)
 
-            #image = torch.zeros(size=(1, 1263, 1231), dtype=torch.float32) #Used for transform to test having 832*832
         #get the number of spots
-        label = self.img_labels.iloc[idx + idx_offset, 1]
-        #label = torch.from_numpy(label)
-        label = torch.tensor([label]).type(torch.float32) #label transformation
+        label = self.img_labels.iloc[idx, 1]
+        label = self.process_label(label)
 
-        # lt = 0
-        # # up = 20000  # the upper threshold is actually this value + 60
-        # image[image < lt] = lt
-
-        if self.useSqrt:
-            image = numpy.sqrt(image)
-        #stuff
-        #if self.transform:
-            # image = torch.tensor(image)
-            # #image[image > up] = up
-
-            #image = image.squeeze(dim=0)
-            # if len(image.shape) == 2:
-            #     image = image[None]  # this is called broadcasting, adds an extra dimension
-            #image = torch.tensor(image.astype(numpy.float32)) #converts the 3d numpy integer array into a 3d floating point tensor
-
-            #image = self.transform(image).unsqueeze(dim=0) #Added for ResNet
-            #image = numpy.repeat(image, 3, axis=0) #take this out and modify the ResNet
-        if self.target_transform:
-            label = self.target_transform(label)
-
-        return image, label, self.img_labels.iloc[idx + idx_offset, 0] #third return value should be the expt_filename
-
-'''
-# from IPython import embed;
-# embed()
-
-dir2 = '/mnt/tmpdata/data/isashu/actualLoaderFiles'
-hd_filename = os.path.join(dir2, "imageNameAndImage.hdf5") #Complete path and name of hdf5 file
-cs_filename = os.path.join(dir2, "imageNameAndSpots.csv") #Complete path and name of csv file
-
-data = CustomImageDataset(cs_filename, hd_filename)
-
-pixelValues = []
-for i in range(1):
-    da = data[i][0]
-    print(da)
-    pixelValues += list(da.flatten())
-
-        #spotCounts.append((data.img_labels.iloc[i, 0], data.img_labels.iloc[i, 1]))
-    #spotCounts.append(data[i][1])
-#print(spotCounts)
-plt.hist(pixelValues, 100000)
-plt.show()
-
-#
-# #print(data[0][1])
-'''
+        return image, label #, self.img_labels.iloc[idx + idx_offset, 0] #third return value should be the expt_filename
