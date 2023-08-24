@@ -1,15 +1,9 @@
 import torch
 from torch.utils.data import Dataset
-from torchvision import datasets
-import os
 import pandas as pd
 import h5py
-from matplotlib import pyplot as plt
 import numpy
 from IPython import embed
-from torchvision.io import read_image
-from torchvision.models import resnet50, ResNet50_Weights #Added for ResNet
-import torchvision
 '''
 annotations_file should be the full path of the csv file with rows [image name, # of spots]
 '''

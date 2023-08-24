@@ -3,24 +3,27 @@ import csv
 import h5py
 from dxtbx.model import ExperimentList
 from dials.array_family import flex
-import condition
+from isashumod import condition
+import numpy as np
 from IPython import embed
 import numpy
 import torch
 import time
 
-def processImage(img, cond_meth):
+def processImage(img, cond_meth, useSqrt=False, lt=0, dev="cpu"):
     '''
     img is a numpy array
     returns a tensor
     '''
-    cond_img = torch.tensor(img.astype(numpy.float32)).unsqueeze(0)
-    cond_img.to('cpu')
+    if not img.dtype == np.float32:
+        img = img.astype(np.float32)
+    cond_img = torch.tensor(img).unsqueeze(0)
+    cond_img.to(dev)
     cond_img = cond_meth(cond_img)  # .squeeze()
 
-    lt = 0
     cond_img[cond_img < lt] = lt
-
+    if useSqrt:
+        cond_img = torch.sqrt(cond_img)
     return cond_img
 
 def addExpFiles(raw_dir, firstFiles, per_files, num_files, cond_meth,  hd, writer):
