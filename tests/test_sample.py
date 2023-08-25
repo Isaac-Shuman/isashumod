@@ -1,27 +1,23 @@
+#export PYTHONPATH=/home/isasshu/PycharmProjects/
+
+
 import pytest
-import spotFinder as sf
-import setupLoaders
-import dataLoader
-import condition
+import sys
+sys.path.append('~/PycharmProjects/isashumod')
+from isashumod import spotFinder as sf
+from isashumod import setupLoaders
+from isashumod import dataLoader
+from isashumod import condition
 import numpy as np
 import torch
 import os
-from IPython import embed
-
-def func(x):
-    return x + 1
 
 def make_pro_image():
     img = np.random.randint(7011, size=(2527, 2463)) - 10
     cond_meth = [func for func in filter(callable, condition.__dict__.values())][0]
-    pro_img = setupLoaders.processImage(img=img, cond_meth=cond_meth())  # pre-process image
+    pro_img = setupLoaders.process_img(img=img, cond_meth=cond_meth())  # pre-process image
     pro_img = dataLoader.process_img(img=pro_img, useSqrt=True)
     return pro_img
-
-#def save_image(image):
-
-def test_answer():
-    assert func(3) == 4
 
 def test_prepro_works():
     #make a numpy array with pilatus dimensions
@@ -29,7 +25,7 @@ def test_prepro_works():
 
     for cond_meth in [func for func in filter(callable, condition.__dict__.values())]:
         print(cond_meth.__name__)
-        pro_img = setupLoaders.processImage(img=img, cond_meth=cond_meth())  # pre-process image
+        pro_img = setupLoaders.process_img(img=img, cond_meth=cond_meth())  # pre-process image
         pro_img = dataLoader.process_img(img=pro_img, useSqrt=True)  # live proces
         if pro_img.shape != (1, 832, 832):
             assert False
@@ -43,7 +39,19 @@ def load_model(path, device):
     return net
 def test_loadModel(tmp_path):
     device = torch.device(('cuda:' + str(0)) if torch.cuda.is_available() else 'cpu')
+    config = {
+        "err_margin": 0.1,
+        "batch_size": 10,
+        "epochs": 500,
+        "useMultipleGPUs": False,
+        "useCuda": True,
+        "lm": False,
+        "arc": sf.Rn(),
+        "lr": 1e-11,
+        "mom": 0.1
+    }
     net = load_model("/mnt/tmpdata/data/isashu/thousandYearRun/run_2023-08-13_13_07_40/modelFinal.pth", device=device) #replace with makenet
+    #net = sf.make_net(device, config)
 
     #run image through model
     pro_img = make_pro_image().to(device).unsqueeze(dim=0)
@@ -78,30 +86,16 @@ def test_consistentLoaders():
     trainloader, valloader = sf.make_trainValLoaders(sf.make_dataset(root=rootForTrain), batch_size=config['batch_size'])
 
     device = torch.device(('cuda:' + str(0)) if torch.cuda.is_available() else 'cpu')
-    net = sf.make_net(device=device, config=config)
-    criterion = torch.nn.MSELoss(reduction='mean')
-    #optimizer = optim.SGD(net.parameters(), lr=config['lr'], momentum=config['mom'])  # lr=0.00000000001, momentum=0.3
 
     sum = 0
-    i = 0
     for data in valloader:
-        if i == 0:
-            inputs, labels = data[0].to(device), data[1].to(device)
-            outputs = net(inputs)
-            print(outputs)
-            print(labels)
-        i+=1
-        loss = criterion(outputs, labels)
-    embed()
-    i = 0
+        inputs, labels = data[0].to(device), data[1].to(device)
+        sum += labels.item()
+
+    nsum = 0
     for data in valloader:
-        if i == 0:
-            inputs, labels = data[0].to(device), data[1].to(device)
-            outputs = net(inputs, train=False)
-            print(outputs)
-            print(labels)
-        i+=1
+        inputs, labels = data[0].to(device), data[1].to(device)
+        nsum += labels.item()
 
-    print(f'Sum of labels {sum}')
-
+    assert sum == nsum
 

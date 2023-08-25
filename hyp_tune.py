@@ -9,8 +9,8 @@ outdir = sys.argv[1]
 num_ep = int(sys.argv[2])
 gpu_num = int(sys.argv[3])
 
-loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/bigLoaders/"
-loaderUnseenRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/smallLoaders/"
+loaderRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/smallerLoaders/"
+loaderUnseenRoot = "/mnt/tmpdata/data/isashu/newLoaders/threeMax/smallerLoaders/"
 
 def gen_params():
     num = 18  #random.choice([18, 34, 50])

@@ -19,9 +19,6 @@ import numpy
 import re
 #2527, 2463
 
-
-#Setup for the run info files
-
 def setup_logger(filename):
     format = '%(asctime)s >> %(message)s'
     logger = logging.getLogger('main')
@@ -46,15 +43,6 @@ def getInfoFolder(config):
     os.mkdir(folderName)
 
     return folderName
-# def setupInfoFiles():
-#     rootFolderName = '/mnt/tmpdata/data/isashu/runFolders'
-#     folderName = os.path.join(rootFolderName,str(time.strftime('run_%Y-%m-%d_%H_%M_%S')))
-#     logName = 'metrics.log'
-#
-#     os.mkdir(folderName)
-#     log_filename = os.path.join(folderName, logName)
-#
-#     return folderName, log_filename
 
 #Used to calculate the dimensions of an image after it passed through a pool or convolution layer
 def calcLengOfConv(length , kern_size, stride_size = -1):
@@ -64,8 +52,6 @@ def calcLengOfConv(length , kern_size, stride_size = -1):
 
 #Make the data loaders
 def make_dataset(root):
-
-    #transf = transforms.Compose([]) #Do I need this?
     iiFile = "imageNameAndImage.hdf5"
     isFile = "imageNameAndSpots.csv"
     hd_filename = os.path.join(root, iiFile)
@@ -86,8 +72,8 @@ def make_trainValLoaders(trainset, batch_size):
                                               shuffle=True)
     valloader = torch.utils.data.DataLoader(val_subset, batch_size=batch_size,
                                             shuffle=False)
-
     return trainloader, valloader
+
 def make_testloader(dataset, batch_size):
     return torch.utils.data.DataLoader(dataset, batch_size=batch_size,
                                              shuffle=True)
@@ -137,40 +123,26 @@ class Rn(nn.Module):
             self.res = resnet34()
         if num == 50:
             self.res = resnet50()
-        #self.tra = vit_b_16(image_size=832, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
 
         self.res.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)#nn.Conv2d(1, self.res.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.fc_1000_to_100 = nn.Linear(1000, 100)
         self.fc_100_to_1 = nn.Linear(100, 1)
         self.fc_1000_to_1 = nn.Linear(1000, 1)
-        # self.fc2 = nn.Linear(120, 84)
 
     def forward(self, x):
-        # x.shape = 505 * 492
-        # x = self.pool(x)
-        # if train:
-        #     self.train()
-        #     #self.tra.train()
-        # else:
-        #     self.eval()
-        #     #self.tra.eval()
-
         x = self.res(x)
         x = F.relu(x)
-
         if self.two_fc_mode:
             x = self.fc_1000_to_100(x)
             x = F.relu(x)
             x = self.fc_100_to_1(x)
         else:
             x = self.fc_1000_to_1(x)
-
         return x
 
 class Tr(nn.Module):
     def __init__(self, mpk=1, fema=3, num=16):
         super().__init__()
-
         if num == 16:
             self.tra = vit_b_16(image_size=832)#, hidden_dim=1)  #patch_size = 16, and 16 *52 = 832
         if num == 32:
@@ -178,21 +150,11 @@ class Tr(nn.Module):
         self.tra.conv_proj = torch.nn.Conv2d(1, 768, kernel_size=(num, num), stride=(num, num))
 
         self.fc1 = nn.Linear(1000, 1)
-        # self.fc2 = nn.Linear(120, 84)
 
     def forward(self, x):
-        # if train:
-        #     #self.tra.train()
-        #     self.train()
-        # else:
-        #     #self.tra.eval()
-        #     self.eval()
-
         x = self.tra(x)
         x = F.relu(x)
-
         x = self.fc1(x)
-
         return x
 def make_net(device, config):
     # Make the network and have it utilize the gpu
@@ -442,8 +404,10 @@ def plot_metrics(train_losses, val_losses, train_accuracies, val_accuracies, tra
 
     plt.show()
 
-def loadModel(pathToModel, net):
+def loadModel(pathToModel, net, device):
     net.load_state_dict(torch.load(pathToModel, map_location=torch.device('cpu')))
+    net.to(device, dtype=torch.float32)
+
     return net
 
 # def verifyLoaders():
@@ -586,12 +550,10 @@ def main(rootDir, loaderRoot, loaderUnseenRoot, num=18, lr=1e-7, optim=0, mom=0.
             config=config
         )
     else:
-        net = loadModel("/mnt/tmpdata/data/isashu/runFolders/run_2023-08-STUFF.pth") #Current network must match loaded network
+        net = loadModel("/mnt/tmpdata/data/isashu/runFolders/run_2023-08-STUFF.pth", device=device) #Current network must match loaded network
         if (torch.cuda.device_count() > 1) and config['useMultipleGPUS']:
             print(f"Let's use {torch.cuda.device_count()} GPUs!")
             net = nn.DataParallel(net)
-        if config['useCuda']:
-            net.to(device, dtype=torch.float32)
 
     final_accuracies = []
     for testloader in testloaders:
@@ -653,7 +615,6 @@ def plot_trend(loader, net, device, err_margin, pre):
             act += [d.item() for d in act_count]
 
             exps += [get_num(d) for d in filename]
-    from scipy.stats import pearsonr
     cc = pearsonr(vals, act)[0]
     acc = (abs(numpy.array(vals) - numpy.array(act))/numpy.array(act) < err_margin).sum()/len(vals)
 
@@ -694,9 +655,6 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
                     "5.45ALoader"]
     rootsForTest = [os.path.join(rootForTest, dname) for dname in rootsForTest]
 
-    # use the gpu
-    device = torch.device(('cuda:' + str(gpu_num)) if torch.cuda.is_available() else 'cpu')
-
     testloaders = []
     for rootForTest in rootsForTest:
         testloaders.append(make_testloader(make_dataset(root=rootForTest), batch_size=config['batch_size']))
@@ -704,8 +662,7 @@ def plotGuesses(rootDir, loaderRoot, num=18, lr=1e-7, optim=0, mom=0.99, epochs=
     unseenloader = make_testloader(make_dataset(root=rootForVal), batch_size=config['batch_size'])
 
     net = loadModel("/mnt/tmpdata/data/isashu/thousandYearRun/run_2023-08-13_13_07_40/modelFinal.pth", config['arc'])  # Current network must match loaded network
-    device = 'cuda:1'
-    net.to(device, dtype=torch.float32)
+
     #
     # net.eval()
     # with torch.no_grad():
