@@ -10,7 +10,7 @@ import numpy
 import torch
 import time
 
-def processImage(img, cond_meth, useSqrt=False, lt=0, dev="cpu"):
+def process_img(img, cond_meth, useSqrt=False, lt=0, dev="cpu"):
     '''
     img is a numpy array
     returns a tensor

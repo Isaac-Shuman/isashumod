@@ -12,6 +12,12 @@ import numpy as np
 import torch
 import os
 
+def make_dummy_loader():
+    #make a dummy hdf5.py and csv file
+    #make an dummy images
+    #make dummy labels
+    #make dummy names
+
 def make_pro_image():
     img = np.random.randint(7011, size=(2527, 2463)) - 10
     cond_meth = [func for func in filter(callable, condition.__dict__.values())][0]
@@ -90,12 +96,12 @@ def test_consistentLoaders():
     sum = 0
     for data in valloader:
         inputs, labels = data[0].to(device), data[1].to(device)
-        sum += labels.item()
+        sum += labels.sum().item()
 
     nsum = 0
     for data in valloader:
         inputs, labels = data[0].to(device), data[1].to(device)
-        nsum += labels.item()
+        nsum += labels.sum().item()
 
     assert sum == nsum
 
