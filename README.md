@@ -1,2 +1,2 @@
 # isashumod
-My first repository
+SLAC spot counter repository
